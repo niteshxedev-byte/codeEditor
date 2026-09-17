@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace Dashboard — Personal Code Editor</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        void:    '#000000',
+                        surface: '#0D0D0D',
+                        edge:    '#1F1F1F',
+                        blue:    '#2563EB',
+                        snow:    '#FFFFFF',
+                        muted:   '#6B7280',
+                        danger:  '#EF4444',
+                        ok:      '#22C55E'
+                    },
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :focus-visible {
+            outline: 2px solid #2563EB;
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+
+        /* Subtle scrollbars for panels */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F1F1F;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2563EB;
+        }
+    </style>
+</head>
+
+<body class="bg-void text-snow font-sans antialiased min-h-screen flex flex-col selection:bg-blue selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="h-14 border-b border-edge bg-void/90 backdrop-blur sticky top-0 z-40 px-6 flex items-center justify-between">
+        <div class="flex items-center gap-6">
+            <a href="/" class="font-mono text-sm text-blue tracking-tight hover:opacity-85 transition-opacity">
+                pce/dashboard
+            </a>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <a 
+                href="/editor" 
+                class="bg-blue hover:bg-blue/90 text-white font-mono text-xs px-3.5 py-1.5 rounded-sm transition-colors flex items-center gap-1.5"
+            >
+                <span>+</span> Launch editor
+            </a>
+            <div class="h-4 w-px bg-edge"></div>
+            <div class="flex items-center gap-2">
+                <span class="font-mono text-xs text-muted">user:</span>
+                <span class="font-mono text-xs text-snow font-medium">
+                    <%= typeof user !== 'undefined' && user && user.username ? user.username : 'developer' %>
+                </span>
+            </div>
+            <a 
+                href="/logout" 
+                class="font-mono text-xs text-muted hover:text-danger transition-colors ml-2"
+                title="Log out"
+            >
+                exit
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8">
+
+        <!-- Welcome Banner -->
+        <section class="border border-edge bg-surface rounded-sm p-6 md:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-medium tracking-tight text-snow">
+                    Welcome, <%= typeof user !== 'undefined' && user && user.username ? user.username : 'Developer' %>
+                </h1>
+                <p class="text-xs font-mono text-muted mt-1">
+                    Manage your saved project workspaces and exported documentation.
+                </p>
+            </div>
+            <div class="flex items-center gap-3">
+                <a 
+                    href="/editor" 
+                    class="bg-blue text-white hover:bg-blue/90 font-mono text-xs px-4 py-2 rounded-sm transition-all"
+                >
+                    + New workspace
+                </a>
+                <a 
+                    href="/aboutCodeEditor" 
+                    class="border border-edge hover:border-muted text-snow font-mono text-xs px-4 py-2 rounded-sm transition-colors"
+                >
+                    Docs
+                </a>
+            </div>
+        </section>
+
+        <!-- Main Content: Workspaces & PDFs side-by-side -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+            <!-- Workspaces Section -->
+            <section class="space-y-4">
+                <div class="flex items-center justify-between pb-2 border-b border-edge">
+                    <h2 class="text-base font-medium text-snow flex items-center gap-2">
+                        <span>Workspaces</span>
+                        <span class="text-xs font-mono text-muted">(<%= typeof projects !== 'undefined' ? projects.length : 0 %>)</span>
+                    </h2>
+                    <a href="/editor" class="font-mono text-xs text-blue hover:underline">+ new</a>
+                </div>
+
+                <div class="space-y-3">
+                    <% if (typeof projects !== 'undefined' && projects.length > 0) { %>
+                        <% projects.forEach(project => { %>
+                            <div class="border border-edge bg-surface hover:border-blue/50 transition-colors p-4 rounded-sm flex items-center justify-between gap-3 group">
+                                <div class="space-y-1 min-w-0">
+                                    <div class="flex items-center gap-3">
+                                        <span class="font-mono text-sm font-medium text-snow group-hover:text-blue transition-colors truncate">
+                                            <%= project.projectName %>
+                                        </span>
+                                        <% if (project.projectProgrammingLanguage) { %>
+                                            <span class="font-mono text-2xs px-2 py-0.5 border border-edge text-muted rounded uppercase flex-shrink-0">
+                                                <%= project.projectProgrammingLanguage %>
+                                            </span>
+                                        <% } %>
+                                    </div>
+                                    <% if (project.projectDescription && project.projectDescription !== 'No description provided') { %>
+                                        <p class="text-xs text-muted truncate">
+                                            <%= project.projectDescription %>
+                                        </p>
+                                    <% } %>
+                                </div>
+                                <div class="flex items-center gap-3 flex-shrink-0">
+                                    <span class="font-mono text-2xs text-muted">
+                                        <%= new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) %>
+                                    </span>
+                                    <a 
+                                        href="/editor?projectUrl=<%= encodeURIComponent(project.projectUrl) %>&name=<%= encodeURIComponent(project.projectName) %>" 
+                                        class="font-mono text-xs text-snow bg-void border border-edge hover:border-blue px-3 py-1 rounded-sm transition-colors"
+                                    >
+                                        open
+                                    </a>
+                                </div>
+                            </div>
+                        <% }) %>
+                    <% } else { %>
+                        <div class="border border-dashed border-edge p-6 rounded-sm text-center space-y-2">
+                            <p class="text-xs font-mono text-muted">No workspaces saved yet.</p>
+                            <a href="/editor" class="inline-block font-mono text-xs text-blue hover:underline">
+                                + Create in editor
+                            </a>
+                        </div>
+                    <% } %>
+                </div>
+            </section>
+
+            <!-- PDF Documents Section -->
+            <section class="space-y-4">
+                <div class="flex items-center justify-between pb-2 border-b border-edge">
+                    <h2 class="text-base font-medium text-snow flex items-center gap-2">
+                        <span>Exports & Documentation</span>
+                        <span class="text-xs font-mono text-muted">(<%= typeof pdfs !== 'undefined' ? pdfs.length : 0 %>)</span>
+                    </h2>
+                </div>
+
+                <div class="space-y-3">
+                    <% if (typeof pdfs !== 'undefined' && pdfs.length > 0) { %>
+                        <% pdfs.forEach(pdf => { %>
+                            <div class="border border-edge bg-surface hover:border-blue/50 transition-colors p-4 rounded-sm flex items-center justify-between group">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div class="w-8 h-8 rounded-sm bg-void border border-edge flex items-center justify-center font-mono text-2xs text-blue font-bold flex-shrink-0">
+                                        PDF
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="font-mono text-sm font-medium text-snow group-hover:text-blue transition-colors truncate">
+                                            <%= pdf.pdfName %>
+                                        </p>
+                                        <p class="text-2xs font-mono text-muted">
+                                            <%= new Date(pdf.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) %>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-3 flex-shrink-0">
+                                    <a 
+                                        href="<%= pdf.pdfUrl %>" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        class="font-mono text-xs text-snow bg-void border border-edge hover:border-blue hover:text-blue px-3 py-1.5 rounded-sm transition-colors flex items-center gap-1.5"
+                                    >
+                                        <span>View</span>
+                                    </a>
+                                </div>
+                            </div>
+                        <% }) %>
+                    <% } else { %>
+                        <div class="border border-dashed border-edge p-6 rounded-sm text-center space-y-2">
+                            <p class="text-xs font-mono text-muted">No exports generated yet.</p>
+                            <span class="font-mono text-2xs text-muted/60">Export code to PDF from the editor toolbar.</span>
+                        </div>
+                    <% } %>
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-12 border-t border-edge px-6 flex items-center justify-between text-2xs font-mono text-muted mt-8">
+        <span>personal_code_editor // dashboard</span>
+        <div class="flex items-center gap-4">
+            <a href="/aboutCodeEditor" class="hover:text-snow transition-colors">about</a>
+            <a href="/editor" class="hover:text-snow transition-colors">editor</a>
+            <a href="/login" class="hover:text-snow transition-colors">account</a>
+        </div>
+    </footer>
+
+</body>
+</html>
+

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Code Editor — Architecture & Features</title>
+    <meta name="description"
+        content="Personal Code Editor — Cloud AI integration, Monaco Editor, Judge0 execution, and MongoDB workspace synchronization.">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        void: '#000000',
+                        surface: '#0D0D0D',
+                        edge: '#1F1F1F',
+                        blue: '#2563EB',
+                        snow: '#FFFFFF',
+                        muted: '#6B7280',
+                        ok: '#22C55E',
+                    },
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    fontSize: {
+                        '2xs': ['0.68rem', { lineHeight: '1rem' }],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Cursor blink */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        #cursor {
+            display: inline-block;
+            width: 8px;
+            height: 1.05em;
+            background: #2563EB;
+            margin-left: 2px;
+            vertical-align: text-bottom;
+            animation: blink 1s step-end infinite;
+        }
+
+        /* Hairline Grid */
+        .grid-hairline {
+            display: grid;
+            gap: 1px;
+            background-color: #1F1F1F;
+        }
+
+        /* Focus visible accessibility */
+        :focus-visible {
+            outline: 2px solid #2563EB;
+            outline-offset: 3px;
+            border-radius: 2px;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F1F1F;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2563EB;
+        }
+    </style>
+</head>
+
+<body class="bg-void text-snow font-sans antialiased min-h-screen flex flex-col selection:bg-blue selection:text-white">
+
+    <!-- ─── Navigation Bar ──────────────────────────────────────────────────────── -->
+    <header class="fixed top-0 inset-x-0 z-50 h-14 border-b border-edge bg-void/90 backdrop-blur-md px-6 flex items-center justify-between">
+        <div class="flex items-center gap-6">
+            <a href="/aboutCodeEditor" class="font-mono text-sm text-blue tracking-tight hover:opacity-85 transition-opacity">
+                pce/about
+            </a>
+            <span class="hidden md:inline-block h-4 w-px bg-edge"></span>
+            <div class="hidden md:flex items-center gap-5 font-mono text-xs text-muted">
+                <a href="#features" class="hover:text-snow transition-colors">features</a>
+                <a href="#architecture" class="hover:text-snow transition-colors">architecture</a>
+                <a href="#stack" class="hover:text-snow transition-colors">stack</a>
+                <a href="#local-ai" class="hover:text-snow transition-colors">local ai</a>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <a href="/DashboardCodeEditor" class="font-mono text-xs text-muted hover:text-snow transition-colors px-3 py-1.5 rounded-sm border border-edge hover:border-muted">
+                Dashboard
+            </a>
+            <a href="/editor" class="font-mono text-xs bg-blue text-white px-3.5 py-1.5 rounded-sm hover:bg-blue/90 transition-colors">
+                Launch Editor →
+            </a>
+        </div>
+    </header>
+
+    <!-- ─── Hero Section ─────────────────────────────────────────────────────── -->
+    <section class="pt-32 pb-16 px-6 max-w-5xl mx-auto w-full">
+        <h1 class="text-3xl md:text-5xl font-medium tracking-tight text-snow leading-tight max-w-3xl mb-4">
+            A developer workspace with local & cloud AI and live code execution.
+        </h1>
+
+        <p class="text-base text-muted max-w-2xl leading-relaxed mb-8">
+            An in-browser code editor powered by Monaco, Judge0 sandbox execution, and  local + cloud AI assistant agents.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <a href="/editor" class="bg-blue hover:bg-blue/90 text-white font-mono text-xs px-4 py-2 rounded-sm transition-colors">
+                Launch Editor
+            </a>
+            <a href="/DashboardCodeEditor" class="border border-edge hover:border-muted text-snow font-mono text-xs px-4 py-2 rounded-sm transition-colors">
+                Workspaces
+            </a>
+        </div>
+    </section>
+
+    <!-- ─── System Features ───────────────────────────────────────────────── -->
+    <section id="features" class="py-16 px-6 border-t border-edge bg-surface/50">
+        <div class="max-w-5xl mx-auto">
+            <div class="mb-10">
+                <h2 class="text-xl md:text-2xl font-medium text-snow">Core Features</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
+                    <h3 class="text-sm font-medium text-snow font-mono">Code Execution</h3>
+                    <p class="text-xs text-muted leading-relaxed">
+                        Run JavaScript, Python, C++, Java, Rust, and Go directly in isolated containers with live terminal output.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
+                    <h3 class="text-sm font-medium text-snow font-mono">Monaco Editor & Files</h3>
+                    <p class="text-xs text-muted leading-relaxed">
+                        VS Code editing experience with syntax highlighting, file tree explorer, and multi-file workspaces.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
+                    <h3 class="text-sm font-medium text-snow font-mono">HTML Preview</h3>
+                    <p class="text-xs text-muted leading-relaxed">
+                        Live full-page HTML, CSS, and JS preview rendered directly in a dedicated browser tab.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
+                    <h3 class="text-sm font-medium text-snow font-mono">PDF & Zip Exports</h3>
+                    <p class="text-xs text-muted leading-relaxed">
+                        Export your workspace as a zip archive or generate styled PDF code documentation.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
+                    <h3 class="text-sm font-medium text-snow font-mono">AI Teacher Agent</h3>
+                    <p class="text-xs text-muted leading-relaxed">
+                        Streaming AI assistance powered by local + cloud AI models with workspace tools and Google Fonts support.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
+                    <h3 class="text-sm font-medium text-snow font-mono">Account Security</h3>
+                    <p class="text-xs text-muted leading-relaxed">
+                        User authentication with HTTP-only cookies and bcrypt-hashed credentials.
+                    </p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Interactive Project Architecture ──────────────────────────────── -->
+    <section id="architecture" class="py-24 px-6 border-t border-edge">
+        <div class="max-w-5xl mx-auto">
+            <div class="mb-12">
+                <span class="font-mono text-2xs text-blue uppercase tracking-widest block mb-2">// project structure</span>
+                <h2 class="text-2xl md:text-3xl font-medium text-snow">Source code organization</h2>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+                
+                <!-- Tree explorer widget -->
+                <div class="lg:col-span-2 bg-surface rounded-sm border border-edge p-5 font-mono text-xs select-none">
+                    <div class="text-snow font-medium mb-3 pb-2 border-b border-edge">PERSONAL_CODE_EDITOR/</div>
+
+                    <div class="space-y-1.5 text-muted">
+                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="index">
+                            <span class="text-blue">📄</span> index.js
+                        </div>
+                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="config">
+                            <span class="text-blue">⚙️</span> src/Config/
+                        </div>
+                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="routes">
+                            <span class="text-blue">📁</span> src/Routes/
+                        </div>
+                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="models">
+                            <span class="text-blue">🗄️</span> src/Models/
+                        </div>
+                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="views">
+                            <span class="text-blue">🖼️</span> src/Views/
+                        </div>
+                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="public">
+                            <span class="text-blue">📦</span> src/public/
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info detail pane -->
+                <div class="lg:col-span-3 bg-surface border border-edge p-6 rounded-sm min-h-[220px]">
+                    <div id="info-default" class="info-pane">
+                        <p class="text-sm text-muted">Click any folder or file on the left to inspect its architectural responsibility.</p>
+                    </div>
+
+                    <div id="info-index" class="info-pane hidden space-y-3">
+                        <div class="font-mono text-xs text-blue font-medium">index.js</div>
+                        <p class="text-sm text-muted leading-relaxed">
+                            App entry point. Configures Express middleware (`express.json`, `cookie-parser`, `morgan`), mounts router modules, connects to MongoDB via `connectDB()`, and starts the server on port 3001.
+                        </p>
+                    </div>
+
+                    <div id="info-config" class="info-pane hidden space-y-3">
+                        <div class="font-mono text-xs text-blue font-medium">src/Config/</div>
+                        <p class="text-sm text-muted leading-relaxed">
+                            Contains `db.connection.js` for MongoDB Atlas connections and `codeExecution.config.js` which handles base64 encoding, RapidAPI Judge0 HTTP submissions, and status polling logic.
+                        </p>
+                    </div>
+
+                    <div id="info-routes" class="info-pane hidden space-y-3">
+                        <div class="font-mono text-xs text-blue font-medium">src/Routes/</div>
+                        <p class="text-sm text-muted leading-relaxed">
+                            Houses modular router files: `authRoute` for login/register, `dashbordRoutes` for user project rendering, and `editorRoutes` for `/runCode`, `/save-project`, and `/save-pdf` endpoints.
+                        </p>
+                    </div>
+
+                    <div id="info-models" class="info-pane hidden space-y-3">
+                        <div class="font-mono text-xs text-blue font-medium">src/Models/</div>
+                        <p class="text-sm text-muted leading-relaxed">
+                            Mongoose schemas defining MongoDB structures: `userModels.js` (authentication credentials), `projectModel.js` (workspace metadata & URL), and `pdfModels.js` (generated PDF records).
+                        </p>
+                    </div>
+
+                    <div id="info-views" class="info-pane hidden space-y-3">
+                        <div class="font-mono text-xs text-blue font-medium">src/Views/</div>
+                        <p class="text-sm text-muted leading-relaxed">
+                            EJS templates rendered server-side by Express. Includes `editor.ejs` (Monaco workspace), `DashboardCodeEditor.ejs` (user project list), and `aboutProjectRoute.ejs`.
+                        </p>
+                    </div>
+
+                    <div id="info-public" class="info-pane hidden space-y-3">
+                        <div class="font-mono text-xs text-blue font-medium">src/public/</div>
+                        <p class="text-sm text-muted leading-relaxed">
+                            Static assets including `editor.js` (file tree drag-and-drop state manager & Monaco instance handler), `style_codeeditor.css` (custom design system tokens), and stored `/uploads/`.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Tech Stack Grid ──────────────────────────────────────────────── -->
+    <section id="stack" class="py-24 px-6 border-t border-edge bg-surface/50">
+        <div class="max-w-5xl mx-auto">
+            <div class="mb-12">
+                <span class="font-mono text-2xs text-blue uppercase tracking-widest block mb-2">// technology stack</span>
+                <h2 class="text-2xl md:text-3xl font-medium text-snow">Engineered with modern tooling</h2>
+            </div>
+
+            <div class="grid-hairline grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 border border-edge rounded-sm overflow-hidden">
+                <div class="bg-void p-6 space-y-2">
+                    <span class="font-mono text-2xs text-muted block">EDITOR CORE</span>
+                    <h3 class="text-snow font-medium">Monaco Editor</h3>
+                    <p class="text-xs text-muted leading-relaxed">VS Code browser engine with syntax highlighting and multi-model buffer switching.</p>
+                </div>
+
+                <div class="bg-void p-6 space-y-2">
+                    <span class="font-mono text-2xs text-muted block">COMPILER ENGINE</span>
+                    <h3 class="text-snow font-medium">Judge0 API</h3>
+                    <p class="text-xs text-muted leading-relaxed">Isolated sandboxed multi-language execution engine with telemetry logging.</p>
+                </div>
+
+                <div class="bg-void p-6 space-y-2">
+                    <span class="font-mono text-2xs text-muted block">PERSISTENCE</span>
+                    <h3 class="text-snow font-medium">MongoDB + Mongoose</h3>
+                    <p class="text-xs text-muted leading-relaxed">Document database managing users, workspace zip archives, and generated PDF paths.</p>
+                </div>
+
+                <div class="bg-void p-6 space-y-2">
+                    <span class="font-mono text-2xs text-muted block">FILE UPLOADS</span>
+                    <h3 class="text-snow font-medium">Multer</h3>
+                    <p class="text-xs text-muted leading-relaxed">Multipart middleware handling project zip archiving and PDF exports to storage.</p>
+                </div>
+
+                <div class="bg-void p-6 space-y-2">
+                    <span class="font-mono text-2xs text-muted block">AUTHENTICATION</span>
+                    <h3 class="text-snow font-medium">JWT & BcryptJS</h3>
+                    <p class="text-xs text-muted leading-relaxed">Secure HTTP-only cookie authentication paired with salt-hashed user passwords.</p>
+                </div>
+
+                <div class="bg-void p-6 space-y-2">
+                    <span class="font-mono text-2xs text-muted block">SERVER RUNTIME</span>
+                    <h3 class="text-snow font-medium">Node.js + Express 5</h3>
+                    <p class="text-xs text-muted leading-relaxed">ESM module server routing with EJS views and static file delivery.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Local AI Setup (Ollama) ──────────────────────────────────────── -->
+    <section id="local-ai" class="py-20 px-6 border-t border-edge">
+        <div class="max-w-5xl mx-auto">
+            <div class="mb-10">
+                <span class="font-mono text-2xs text-blue uppercase tracking-widest block mb-2">// offline & local inference</span>
+                <h2 class="text-2xl md:text-3xl font-medium text-snow">Running Local AI with Ollama</h2>
+                <p class="text-sm text-muted mt-2 max-w-2xl leading-relaxed">
+                    By default, the editor connects to Ollama cloud. To run models entirely locally on your own GPU/CPU for zero latency and offline coding, install Ollama and pull your preferred coding models:
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-3">
+                    <span class="text-snow font-medium text-sm block">1. Install Ollama</span>
+                    <div class="bg-void p-3 rounded-sm border border-edge text-snow select-all overflow-x-auto">
+                        curl -fsSL https://ollama.com/install.sh | sh
+                    </div>
+                    <p class="text-2xs text-muted font-sans leading-relaxed">
+                        For Linux and macOS. Windows users can download the installer directly from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" class="text-blue hover:underline">ollama.com</a>.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-3">
+                    <span class="text-snow font-medium text-sm block">2. Pull a Code Model</span>
+                    <div class="bg-void p-3 rounded-sm border border-edge text-snow select-all overflow-x-auto space-y-1">
+                        <div>ollama pull qwen2.5-coder:7b</div>
+                        <div class="text-muted"># or light model:</div>
+                        <div>ollama pull llama3.2:1b</div>
+                    </div>
+                    <p class="text-2xs text-muted font-sans leading-relaxed">
+                        Choose <code class="text-snow">qwen2.5-coder</code> for deep coding or <code class="text-snow">llama3.2:1b</code> for fast, lightweight responses.
+                    </p>
+                </div>
+
+                <div class="border border-edge bg-surface p-5 rounded-sm space-y-3">
+                    <span class="text-snow font-medium text-sm block">3. Start Service</span>
+                    <div class="bg-void p-3 rounded-sm border border-edge text-snow select-all overflow-x-auto">
+                        ollama serve
+                    </div>
+                    <p class="text-2xs text-muted font-sans leading-relaxed">
+                        Starts local server on <code class="text-snow">localhost:11434</code>. The editor automatically prioritizes local models over cloud.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Call to Action ───────────────────────────────────────────────── -->
+    <section class="py-24 px-6 border-t border-edge">
+        <div class="max-w-5xl mx-auto border border-edge bg-surface p-8 md:p-12 rounded-sm flex flex-col md:flex-row md:items-center justify-between gap-8">
+            <div>
+                <h2 class="text-2xl font-medium text-snow mb-2">Ready to start coding?</h2>
+                <p class="text-sm text-muted">Launch the editor session or access your workspace dashboard.</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="/editor" class="bg-blue hover:bg-blue/90 text-white font-mono text-sm px-5 py-2.5 rounded-sm transition-colors whitespace-nowrap">
+                    Launch Editor
+                </a>
+                <a href="/login" class="border border-edge hover:border-muted text-snow font-mono text-sm px-5 py-2.5 rounded-sm transition-colors whitespace-nowrap">
+                    Sign In
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Footer ────────────────────────────────────────────────────────── -->
+    <footer class="h-14 border-t border-edge px-6 flex items-center justify-between text-2xs font-mono text-muted max-w-5xl mx-auto w-full">
+        <span>personal_code_editor // about</span>
+        <div class="flex items-center gap-4">
+            <a href="/DashboardCodeEditor" class="hover:text-snow transition-colors">dashboard</a>
+            <a href="/editor" class="hover:text-snow transition-colors">editor</a>
+            <a href="/login" class="hover:text-snow transition-colors">account</a>
+        </div>
+    </footer>
+
+    <!-- Interactive Script -->
+    <script>
+        // Architecture explorer click handler
+        const nodes = document.querySelectorAll(".tree-node");
+        const panes = document.querySelectorAll(".info-pane");
+
+        nodes.forEach(node => {
+            node.addEventListener("click", () => {
+                const target = node.getAttribute("data-target");
+                
+                nodes.forEach(n => n.classList.remove("bg-edge", "text-snow"));
+                node.classList.add("bg-edge", "text-snow");
+
+                panes.forEach(p => p.classList.add("hidden"));
+                const targetPane = document.getElementById("info-" + target);
+                if (targetPane) targetPane.classList.remove("hidden");
+            });
+        });
+    </script>
+</body>
+</html>

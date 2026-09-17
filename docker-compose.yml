@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: personal-code-editor
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - LOCAL_OLLAMA_URL=http://ollama:11434
+    volumes:
+      - uploads_data:/app/src/public/uploads
+    depends_on:
+      - ollama
+    networks:
+      - editor-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: personal-code-editor-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - editor-net
+    # Optional GPU acceleration for NVIDIA:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  uploads_data:
+  ollama_data:
+
+networks:
+  editor-net:
+    driver: bridge

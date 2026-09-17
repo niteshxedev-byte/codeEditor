@@ -1,0 +1,522 @@
+/* Modern High-End IDE Aesthetic (Black #000000, Surface #0A0A0A, Edge #1E1E1E, Accent #2563EB) */
+
+:root {
+  --bg-void: #000000;
+  --bg-surface: #0a0a0a;
+  --bg-elevated: #121212;
+  --border-edge: #1e1e1e;
+  --border-focus: #2563eb;
+  --text-snow: #ffffff;
+  --text-muted: #6b7280;
+  --text-subtle: #404040;
+  --accent-blue: #2563eb;
+  --accent-blue-glow: rgba(37, 99, 235, 0.25);
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-void);
+  color: var(--text-snow);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  letter-spacing: -0.01em;
+}
+
+/* Header */
+.editor-header {
+  height: 44px;
+  background-color: var(--bg-void);
+  border-bottom: 1px solid var(--border-edge);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 20;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-title {
+  font-size: 13px;
+  font-weight: 500;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--accent-blue);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.editor-title:hover {
+  opacity: 0.85;
+}
+
+.workspace-badge {
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-edge);
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.select-box {
+  color: var(--text-snow);
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-edge);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: "JetBrains Mono", monospace;
+  background: var(--bg-surface);
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.select-box:hover {
+  border-color: var(--text-muted);
+}
+
+.select-box:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--accent-blue-glow);
+}
+
+.btn-tool {
+  background-color: transparent;
+  color: var(--text-snow);
+  border: 1px solid var(--border-edge);
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.btn-tool:hover {
+  background: var(--bg-elevated);
+  border-color: var(--text-muted);
+}
+
+.btn-primary {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.font-size-control {
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.font-size-control input {
+  background-color: var(--bg-surface);
+  color: var(--text-snow);
+  border: 1px solid var(--border-edge);
+  width: 42px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: "JetBrains Mono", monospace;
+  outline: none;
+  text-align: center;
+}
+
+.font-size-control input:focus {
+  border-color: var(--accent-blue);
+}
+
+/* Main Container */
+.container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+#file-explorer {
+  width: 220px;
+  min-width: 180px;
+  background-color: var(--bg-void);
+  border-right: 1px solid var(--border-edge);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-title {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-edge);
+  background: var(--bg-void);
+}
+
+.file-tree-container {
+  flex: 1;
+  padding: 8px 6px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.tree-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.tree-file-item:hover {
+  background-color: var(--bg-elevated);
+  color: var(--text-snow);
+}
+
+.tree-file-item.active {
+  background-color: rgba(37, 99, 235, 0.15);
+  color: var(--text-snow);
+}
+
+#editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-void);
+  position: relative;
+  min-width: 300px;
+}
+
+.editor-tabs-bar {
+  height: 34px;
+  background: var(--bg-void);
+  border-bottom: 1px solid var(--border-edge);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.editor-tabs-bar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.editor-tabs-bar::-webkit-scrollbar-thumb {
+  background: var(--border-edge);
+  border-radius: 2px;
+}
+
+.editor-tab {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.editor-tab:hover {
+  color: var(--text-snow);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.editor-tab.active {
+  color: var(--text-snow);
+  background: var(--bg-surface);
+  border-color: var(--border-edge);
+}
+
+.tab-close-icon {
+  font-size: 12px;
+  opacity: 0.4;
+  border-radius: 2px;
+  padding: 1px 2px;
+  margin-left: 2px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.tab-close-icon:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ef4444;
+}
+
+#editor {
+  flex: 1;
+  width: 100%;
+}
+
+#console-wrapper {
+  width: 340px;
+  min-width: 280px;
+  background-color: var(--bg-void);
+  border-left: 1px solid var(--border-edge);
+  display: flex;
+  flex-direction: column;
+}
+
+.console-header {
+  height: 34px;
+  border-bottom: 1px solid var(--border-edge);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: var(--bg-void);
+}
+
+.console-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.output_ai {
+  flex: 1;
+  padding: 14px;
+  overflow-y: auto;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #030303;
+}
+
+.chat-bubble-agent {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-edge);
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #d4d4d8;
+}
+
+.chat-bubble-agent pre {
+  background: #000;
+  border: 1px solid var(--border-edge);
+  padding: 8px;
+  border-radius: 3px;
+  margin-top: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+#prompt {
+  border-top: 1px solid var(--border-edge);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--bg-void);
+}
+
+#console-input {
+  flex: 1;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-edge);
+  color: var(--text-snow);
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+#console-input:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--accent-blue-glow);
+}
+
+#file-label {
+  cursor: pointer;
+  font-size: 15px;
+  padding: 6px 8px;
+  color: var(--text-muted);
+  border-radius: 4px;
+  border: 1px solid var(--border-edge);
+  background: var(--bg-surface);
+  transition: all 0.15s ease;
+}
+
+#file-label:hover {
+  color: var(--text-snow);
+  border-color: var(--text-muted);
+}
+
+#pdf {
+  display: none;
+}
+
+.submit-btn {
+  background-color: var(--accent-blue);
+  color: #ffffff;
+  border: none;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.submit-btn:hover {
+  background-color: #1d4ed8;
+}
+
+/* Terminal */
+#vscode-terminal {
+  height: 180px;
+  background-color: var(--bg-void);
+  border-top: 1px solid var(--border-edge);
+  display: flex;
+  flex-direction: column;
+}
+
+.vscode-terminal-tabs {
+  height: 32px;
+  background-color: var(--bg-void);
+  border-bottom: 1px solid var(--border-edge);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+}
+
+.terminal-tab-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.vscode-terminal-tabs .tab {
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vscode-terminal-tabs .tab.active {
+  color: var(--text-snow);
+  font-weight: 500;
+}
+
+.vscode-terminal-tabs .tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: -9px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-blue);
+}
+
+.terminal-actions {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#terminal-screen {
+  flex: 1;
+  padding: 10px 16px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: #d4d4d8;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+
+.terminal-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terminal-success {
+  color: var(--success);
+}
+
+.terminal-error {
+  color: var(--danger);
+}
+
+.terminal-dim {
+  color: var(--text-muted);
+}

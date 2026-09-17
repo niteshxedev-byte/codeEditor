@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create account — Personal Code Editor</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        void:    '#000000',
+                        surface: '#0D0D0D',
+                        edge:    '#1F1F1F',
+                        blue:    '#2563EB',
+                        snow:    '#FFFFFF',
+                        muted:   '#6B7280',
+                        danger:  '#EF4444',
+                        ok:      '#22C55E',
+                    },
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        html, body { height: 100%; }
+        body { overflow-x: hidden; }
+
+        input:focus {
+            outline: none;
+            border-color: #2563EB;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        /* Kill autofill yellow */
+        input:-webkit-autofill,
+        input:-webkit-autofill:focus {
+            transition: background-color 0s 600000s, color 0s 600000s;
+        }
+
+        .pw-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #6B7280;
+            padding: 4px;
+            line-height: 1;
+        }
+        .pw-toggle:hover { color: #FFFFFF; }
+
+        /* Password strength bar */
+        #strength-bar {
+            height: 2px;
+            background: #1F1F1F;
+            border-radius: 1px;
+            overflow: hidden;
+        }
+        #strength-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 1px;
+            transition: width 0.25s ease, background-color 0.25s ease;
+        }
+
+        :focus-visible {
+            outline: 2px solid #2563EB;
+            outline-offset: 3px;
+            border-radius: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .form-wrap { opacity: 1 !important; transform: none !important; }
+            #strength-fill { transition: none; }
+        }
+    </style>
+</head>
+
+<body class="bg-void text-snow font-sans antialiased flex flex-col min-h-screen">
+
+    <!-- ─── Nav ──────────────────────────────────────────────────────── -->
+    <nav class="px-6 h-14 flex items-center justify-between border-b border-edge">
+        <a href="/" class="font-mono text-sm text-blue tracking-tight hover:opacity-80 transition-opacity">
+            niteshxe.dev/
+        </a>
+        <a href="/login" class="font-mono text-xs text-muted hover:text-snow transition-colors">
+            log in
+        </a>
+    </nav>
+
+
+    <!-- ─── Form ─────────────────────────────────────────────────────── -->
+    <main class="flex-1 flex items-center justify-center px-6 py-16">
+        <div class="form-wrap w-full max-w-sm" style="opacity:0">
+
+            <div class="mb-10">
+                <h1 class="text-2xl font-medium text-snow mb-2">Create your account</h1>
+                <p class="text-sm text-muted">Free, no credit card. Open-source models included.</p>
+            </div>
+
+            <!-- Error flash -->
+            <% if (typeof error !== 'undefined' && error) { %>
+            <div class="mb-6 px-4 py-3 border border-danger/40 bg-danger/10 rounded-sm text-sm text-danger">
+                <%= error %>
+            </div>
+            <% } %>
+
+            <form action="/register" method="POST" novalidate class="space-y-5">
+
+                <!-- Username -->
+                <div class="space-y-1.5">
+                    <label for="username" class="block font-mono text-xs text-muted">username</label>
+                    <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        autocomplete="username"
+                        required
+                        placeholder="niteshxe"
+                        value="<%= typeof formData !== 'undefined' ? formData.username : '' %>"
+                        class="w-full bg-surface border border-edge rounded-sm px-4 py-2.5 text-sm text-snow placeholder-muted/50 transition-colors"
+                    >
+                </div>
+
+                <!-- Email -->
+                <div class="space-y-1.5">
+                    <label for="email" class="block font-mono text-xs text-muted">email</label>
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autocomplete="email"
+                        required
+                        placeholder="you@example.com"
+                        value="<%= typeof formData !== 'undefined' ? formData.email : '' %>"
+                        class="w-full bg-surface border border-edge rounded-sm px-4 py-2.5 text-sm text-snow placeholder-muted/50 transition-colors"
+                    >
+                </div>
+
+                <!-- Password -->
+                <div class="space-y-1.5">
+                    <label for="password" class="block font-mono text-xs text-muted">password</label>
+                    <div class="relative">
+                        <input
+                            id="password"
+                            name="password"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                            placeholder="min. 8 characters"
+                            class="w-full bg-surface border border-edge rounded-sm px-4 py-2.5 pr-10 text-sm text-snow placeholder-muted/50 transition-colors"
+                        >
+                        <button type="button" class="pw-toggle" aria-label="Show password" id="pw-btn">
+                            <svg id="icon-show" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                            <svg id="icon-hide" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" class="hidden">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                            </svg>
+                        </button>
+                    </div>
+                    <!-- Strength indicator -->
+                    <div id="strength-bar" class="mt-1.5">
+                        <div id="strength-fill"></div>
+                    </div>
+                    <p id="strength-label" class="font-mono text-xs text-muted/0 transition-colors" aria-live="polite"></p>
+                </div>
+
+                <!-- Confirm password -->
+                <div class="space-y-1.5">
+                    <label for="confirm-password" class="block font-mono text-xs text-muted">confirm password</label>
+                    <input
+                        id="confirm-password"
+                        name="confirmPassword"
+                        type="password"
+                        autocomplete="new-password"
+                        required
+                        placeholder="••••••••"
+                        class="w-full bg-surface border border-edge rounded-sm px-4 py-2.5 text-sm text-snow placeholder-muted/50 transition-colors"
+                    >
+                    <p id="match-msg" class="font-mono text-xs text-muted/0 transition-colors" aria-live="polite"></p>
+                </div>
+
+                <!-- Submit -->
+                <button
+                    type="submit"
+                    id="submit-btn"
+                    class="w-full bg-blue text-white font-mono text-sm py-2.5 rounded-sm hover:bg-blue/90 active:scale-[0.99] transition-all mt-2"
+                >
+                    Create account
+                </button>
+
+            </form>
+
+            <p class="mt-8 text-center font-mono text-xs text-muted">
+                Already have an account?
+                <a href="/login" class="text-snow hover:text-blue transition-colors ml-1">Log in</a>
+            </p>
+
+        </div>
+    </main>
+
+
+    <!-- ─── Footer ───────────────────────────────────────────────────── -->
+    <footer class="px-6 py-5 border-t border-edge">
+        <p class="font-mono text-xs text-muted/40 text-center">
+            personal_code_editor — built on open-source
+        </p>
+    </footer>
+
+
+    <script>
+        // ─── Fade-in ──────────────────────────────────────────────────────
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced) {
+            gsap.fromTo('.form-wrap',
+                { opacity: 0, y: 14 },
+                { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out', delay: 0.1 }
+            );
+        } else {
+            document.querySelector('.form-wrap').style.opacity = '1';
+        }
+
+        // ─── Show / hide password ─────────────────────────────────────────
+        const pwInput  = document.getElementById('password');
+        const pwBtn    = document.getElementById('pw-btn');
+        const iconShow = document.getElementById('icon-show');
+        const iconHide = document.getElementById('icon-hide');
+
+        pwBtn.addEventListener('click', () => {
+            const visible = pwInput.type === 'text';
+            pwInput.type = visible ? 'password' : 'text';
+            pwBtn.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
+            iconShow.classList.toggle('hidden', !visible);
+            iconHide.classList.toggle('hidden', visible);
+        });
+
+        // ─── Password strength ────────────────────────────────────────────
+        const strengthFill  = document.getElementById('strength-fill');
+        const strengthLabel = document.getElementById('strength-label');
+
+        const levels = [
+            { label: 'too short',  color: '#EF4444', width: '15%' },
+            { label: 'weak',       color: '#F97316', width: '35%' },
+            { label: 'fair',       color: '#EAB308', width: '60%' },
+            { label: 'strong',     color: '#22C55E', width: '85%' },
+            { label: 'very strong',color: '#22C55E', width: '100%' },
+        ];
+
+        function scorePassword(pw) {
+            if (pw.length < 6)  return 0;
+            let score = 1;
+            if (pw.length >= 8)               score++;
+            if (/[A-Z]/.test(pw))             score++;
+            if (/[0-9]/.test(pw))             score++;
+            if (/[^A-Za-z0-9]/.test(pw))      score++;
+            return Math.min(score, 4);
+        }
+
+        pwInput.addEventListener('input', () => {
+            const val = pwInput.value;
+            if (!val) {
+                strengthFill.style.width = '0';
+                strengthLabel.textContent = '';
+                strengthLabel.style.color = 'transparent';
+                return;
+            }
+            const idx   = scorePassword(val);
+            const level = levels[idx];
+            strengthFill.style.width           = level.width;
+            strengthFill.style.backgroundColor = level.color;
+            strengthLabel.textContent          = level.label;
+            strengthLabel.style.color          = level.color;
+        });
+
+        // ─── Password match check ─────────────────────────────────────────
+        const confirmInput = document.getElementById('confirm-password');
+        const matchMsg     = document.getElementById('match-msg');
+
+        function checkMatch() {
+            if (!confirmInput.value) {
+                matchMsg.textContent = '';
+                matchMsg.style.color = 'transparent';
+                return;
+            }
+            const matches = pwInput.value === confirmInput.value;
+            matchMsg.textContent = matches ? 'passwords match' : 'passwords do not match';
+            matchMsg.style.color = matches ? '#22C55E' : '#EF4444';
+        }
+
+        confirmInput.addEventListener('input', checkMatch);
+        pwInput.addEventListener('input', checkMatch);
+    </script>
+
+</body>
+</html>
+

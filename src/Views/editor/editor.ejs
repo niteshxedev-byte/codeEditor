@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code Editor — Personal Code Editor</title>
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- JSZip -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Socket.IO loaded BEFORE Monaco loader to prevent AMD loader collision -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
+    }
+  </script>
+
+  <!-- Monaco Editor Loader -->
+  <script>
+    var require = {
+      paths: {
+        vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs",
+      },
+    };
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.js"></script>
+
+  <!-- Clean Theme Stylesheet -->
+  <link rel="stylesheet" href="/style_codeeditor.css?v=4" />
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="editor-header">
+    <div class="brand-section">
+      <a href="/DashboardCodeEditor" class="editor-title" title="Return to Dashboard">
+        <i class="ri-terminal-box-line"></i>
+        <span>pce/editor</span>
+      </a>
+      <span class="workspace-badge">workspace-1</span>
+    </div>
+
+    <div class="header-controls">
+      <!-- Language Selector -->
+      <select class="select-box" id="language" title="Programming Language">
+        <option value="">Select Language</option>
+        <% if (typeof languages !== "undefined" && languages.length > 0) { %>
+          <% languages.forEach(lang => { %>
+            <option value="<%= lang.id %>" <%= lang.id === 63 ? "selected" : "" %>>
+              <%= lang.name %>
+            </option>
+          <% }) %>
+        <% } else { %>
+          <option value="63" selected>JavaScript (Node.js 12.14.0)</option>
+          <option value="74">TypeScript (3.7.4)</option>
+          <option value="71">Python (3.8.1)</option>
+          <option value="54">C++ (GCC 9.2.0)</option>
+          <option value="50">C (GCC 9.2.0)</option>
+          <option value="62">Java (OpenJDK 13.0.1)</option>
+          <option value="73">Rust (1.40.0)</option>
+          <option value="60">Go (1.13.5)</option>
+        <% } %>
+      </select>
+
+      <button onclick="addFile()" class="btn-tool" title="Add File">
+        <i class="ri-file-add-line"></i> <span>File</span>
+      </button>
+      <button onclick="addFolder()" class="btn-tool" title="Add Folder">
+        <i class="ri-folder-add-line"></i> <span>Folder</span>
+      </button>
+      <button onclick="formatCode()" class="btn-tool" title="Format Code (Shift+Ctrl+F)">
+        <i class="ri-magic-line"></i> <span>Format</span>
+      </button>
+      <button onclick="runCode()" class="btn-tool btn-primary" title="Execute Code (Ctrl+Enter)">
+        <i class="ri-play-fill"></i> <span>Run</span>
+      </button>
+
+      <button onclick="exportFolder()" class="btn-tool" title="Export as ZIP">
+        <i class="ri-download-2-line"></i>
+      </button>
+      <button onclick="importFolder()" class="btn-tool" title="Import Files">
+        <i class="ri-upload-2-line"></i>
+      </button>
+      <button onclick="saveWorkspaceToMongoDB()" class="btn-tool" title="Save Workspace to DB">
+        <i class="ri-cloud-upload-line"></i> Save
+      </button>
+      <button onclick="exportToPDF()" class="btn-tool" title="Export Code as PDF">
+        <i class="ri-file-pdf-line"></i> PDF
+      </button>
+      <button onclick="openHtmlPreview()" class="btn-tool" title="Preview HTML in new tab" id="btn-preview">
+        <i class="ri-eye-line"></i> Preview
+      </button>
+
+      <span class="font-size-control">
+        <span>size:</span>
+        <input type="number" id="fontSize" value="15" min="10" max="32" onchange="updateFontSize()" />
+      </span>
+
+      <a href="/logout" class="btn-tool" style="color:#ef4444; text-decoration:none; display:flex; align-items:center; gap:4px;" title="Log out">
+        <i class="ri-logout-box-r-line"></i> <span>Exit</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="container">
+    <!-- File Explorer -->
+    <div id="file-explorer">
+      <div class="panel-title">
+        <span>Explorer</span>
+        <i class="ri-folders-line"></i>
+      </div>
+      <div id="file-tree-container" class="file-tree-container">
+        <div class="tree-file-item active">
+          <i class="ri-javascript-line" style="color:#eab308"></i>
+          <span>main.js</span>
+        </div>
+        <div class="tree-file-item">
+          <i class="ri-file-text-line" style="color:#60a5fa"></i>
+          <span>README.md</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Monaco Editor -->
+    <div id="editor-container">
+      <div class="editor-tabs-bar">
+        <div class="editor-tab active">
+          <i class="ri-code-line" style="color:#2563eb"></i>
+          <span>main.js</span>
+        </div>
+      </div>
+      <div id="editor"></div>
+    </div>
+
+    <!-- Right AI Assistant -->
+    <div id="console-wrapper">
+      <div class="console-header">
+        <span class="console-title">
+          <i class="ri-sparkling-line" style="color:#2563eb"></i> Teacher Agent
+        </span>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <select id="ai-model-select" class="select-box" style="height:24px; font-size:11px; padding:0 6px; width:auto; max-width:160px; background:#000; border-color:#27272a; color:#fff;" title="Select Local or Cloud Ollama Model">
+            <% if (typeof aiModels !== "undefined" && aiModels.length > 0) { %>
+              <% aiModels.forEach((m, idx) => { %>
+                <option value="<%= m.id %>" <%= idx === 0 ? "selected" : "" %>>
+                  <%= m.name %>
+                </option>
+              <% }) %>
+            <% } else { %>
+              <option value="llama3.2:1b" selected>llama3.2:1b (Local)</option>
+              <option value="qwen3.5:0.8b">qwen3.5:0.8b (Local)</option>
+              <option value="gemma4:31b">gemma4:31b (Cloud - Free)</option>
+              <option value="gpt-oss:20b">gpt-oss:20b (Cloud - Free)</option>
+            <% } %>
+          </select>
+          <button type="button" onclick="refreshModels()" style="background:none; border:none; color:#6b7280; cursor:pointer; padding:2px; font-size:12px;" title="Refresh local & cloud models">
+            <i class="ri-refresh-line"></i>
+          </button>
+          <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color:#22c55e;">
+            ●
+          </span>
+        </div>
+      </div>
+
+      <div id="console-output" class="output_ai">
+        <div class="chat-bubble-agent">
+          <strong>Agent ready.</strong>
+          <p style="margin-top: 4px; color: #a1a1aa;">
+            Ask questions, debug errors, or generate boilerplate code.
+          </p>
+        </div>
+      </div>
+
+      <form id="prompt">
+      <form id="prompt" onsubmit="handleSendPrompt(event); return false;">
+        <input type="text" name="prompt" id="console-input" autocomplete="off" placeholder="Ask AI agent..." />
+        <label for="pdf" id="file-label" title="Attach document">
+          <i class="ri-attachment-line"></i>
+        </label>
+        <input type="file" id="pdf" accept=".pdf" />
+        <button type="submit" class="submit-btn" title="Send message">
+        <button type="button" onclick="handleSendPrompt(event)" class="submit-btn" title="Send message">
+          <i class="ri-send-plane-2-line"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bottom Terminal Panel -->
+  <div id="vscode-terminal">
+    <div class="vscode-terminal-tabs">
+      <div class="terminal-tab-group">
+        <span class="tab active">OUTPUT</span>
+        <span class="tab">PROBLEMS</span>
+        <span class="tab">DEBUG CONSOLE</span>
+      </div>
+
+      <div class="terminal-actions">
+        <span id="COADING_LANGUAGE">
+          <i class="ri-terminal-line"></i> JAVASCRIPT (NODE.JS)
+        </span>
+        <button onclick="clearConsole()" class="btn-tool" style="height:22px; padding:0 8px; font-size:11px;" title="Clear console">
+          clear
+        </button>
+      </div>
+    </div>
+
+    <div id="terminal-screen">
+      <div class="terminal-line terminal-dim">Terminal ready. Click Run or press Ctrl+Enter to execute.</div>
+    </div>
+  </div>
+
+  <!-- Hidden Inputs -->
+  <input type="file" id="folderInput" webkitdirectory style="display: none" />
+  <input type="file" id="fileInput" style="display: none" />
+
+  <!-- Prettier Formatters (Stable UMD bundles via Cloudflare cdnjs) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prettier/2.8.8/standalone.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prettier/2.8.8/parser-babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prettier/2.8.8/parser-html.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prettier/2.8.8/parser-typescript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prettier/2.8.8/parser-postcss.min.js"></script>
+
+  <!-- Editor Logic -->
+  <script src="/editor.js?v=4"></script>
+  <script>
+    // Clean ?prompt= from address bar so reloads stay on clean /editor
+    if (window.location.search && window.location.search.includes("prompt=")) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    const select = document.getElementById("language");
+    const terminal_screen = document.getElementById("terminal-screen");
+    const terminal_actions = document.querySelector("#COADING_LANGUAGE");
+    let selectedId = select && select.value ? Number(select.value) : 63;
+    let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "JavaScript (Node.js)";
+
+    if (select && terminal_actions && select.selectedIndex >= 0 && select.options[select.selectedIndex].text) {
+      terminal_actions.innerHTML = `<i class="ri-terminal-line"></i> ${select.options[select.selectedIndex].text.toUpperCase()}`;
+    }
+
+    function getMonacoLanguage(judgeId) {
+      const id = Number(judgeId);
+      if ([63, 93, 97, 102].includes(id)) return "javascript";
+      if ([74, 94, 101].includes(id)) return "typescript";
+      if ([70, 71, 92, 100, 109, 113].includes(id)) return "python";
+      if ([104, 110, 75, 103, 48, 49, 50].includes(id)) return "c";
+      if ([76, 105, 52, 53, 54].includes(id)) return "cpp";
+      if ([51].includes(id)) return "csharp";
+      if ([91, 62, 96].includes(id)) return "java";
+      if ([68, 98].includes(id)) return "php";
+      if ([72].includes(id)) return "ruby";
+      if ([83].includes(id)) return "swift";
+      if ([73, 108].includes(id)) return "rust";
+      if ([78, 111].includes(id)) return "kotlin";
+      if ([60, 95, 106, 107].includes(id)) return "go";
+      if ([82].includes(id)) return "sql";
+      if ([46].includes(id)) return "shell";
+      return "plaintext";
+    }
+
+    if (select) {
+      select.addEventListener("change", () => {
+        if (!select.value) return;
+        selectedId = Number(select.value);
+        selectedName = select.options[select.selectedIndex].text;
+
+        if (terminal_actions) {
+          terminal_actions.innerHTML = `<i class="ri-terminal-line"></i> ${selectedName.toUpperCase()}`;
+        }
+
+        const monacoLang = getMonacoLanguage(selectedId);
+        if (window.editor && window.monaco) {
+          monaco.editor.setModelLanguage(window.editor.getModel(), monacoLang);
+        }
+      });
+    }
+
+    async function runCode() {
+      try {
+        if (!window.editor) {
+          terminal_screen.innerHTML = `<div class="terminal-line terminal-error">Editor is initializing...</div>`;
+          return;
+        }
+
+        const code = window.editor.getValue();
+
+        if (!selectedId) {
+          terminal_screen.innerHTML = `<div class="terminal-line terminal-error">Please select a language first.</div>`;
+          return;
+        }
+
+        terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Running in Judge0 container...</div>`;
+
+        const res = await fetch("/runCode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, language_id: selectedId.toString() }),
+        });
+
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const rawText = await res.text();
+          terminal_screen.innerHTML = `<div class="terminal-line terminal-error">${escapeHtml(rawText || "Server error")}</div>`;
+          return;
+        }
+
+        const data = await res.json();
+        const output = data.stdout || data.stderr || data.compile_output || data.message || "Executed with no output.";
+        const isError = Boolean(data.stderr || data.compile_output);
+
+        terminal_screen.innerHTML = `
+          <div class="terminal-line ${isError ? "terminal-error" : "terminal-success"}">${escapeHtml(output)}</div>
+          <div class="terminal-line terminal-dim" style="margin-top:6px; font-size:11px;">[Status: ${data.status || "Completed"} | Time: ${data.time || 0}s | Memory: ${data.memory || 0} KB]</div>
+        `;
+      } catch (error) {
+        terminal_screen.innerHTML = `<div class="terminal-line terminal-error">${escapeHtml(error.message || error)}</div>`;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function formatCode() {
+      if (!window.editor || !window.prettier) return;
+      const code = window.editor.getValue();
+      const lang = window.editor.getModel().getLanguageId();
+
+      let parser = "babel";
+      if (lang === "javascript") parser = "babel";
+      if (lang === "typescript") parser = "typescript";
+      if (lang === "json") parser = "json";
+      if (lang === "css") parser = "css";
+      if (lang === "html") parser = "html";
+      if (lang === "python") parser = "python";
+
+      try {
+        const formatted = prettier.format(code, {
+          parser,
+          plugins: window.prettierPlugins || [],
+          tabWidth: 2,
+          semi: true,
+          singleQuote: true,
+        });
+        window.editor.setValue(formatted);
+      } catch (e) {
+        console.warn("Prettier format warning:", e);
+      }
+    }
+
+    function clearConsole() {
+      if (terminal_screen) {
+        terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">Console cleared.</div>`;
+      }
+    }
+
+    function updateFontSize() {
+      const sizeInput = document.getElementById("fontSize");
+      if (sizeInput && window.editor) {
+        window.editor.updateOptions({ fontSize: parseInt(sizeInput.value, 10) });
+      }
+    }
+
+    window.addEventListener("load", () => {
+      const interval = setInterval(() => {
+        if (window.editor && window.monaco) {
+          clearInterval(interval);
+          window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+            runCode();
+          });
+          window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+            formatCode();
+          });
+          window.editor.onDidChangeModelContent(() => {
+            window.hasUnsavedChanges = true;
+          });
+        }
+      }, 100);
+    });
+
+    window.addEventListener("beforeunload", (e) => {
+      if (window.hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "You have unsaved changes in your workspace. Are you sure you want to leave without saving to MongoDB?";
+      }
+    });
+
+    async function handleSendPrompt(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const input = document.getElementById("console-input");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+        const consoleOutput = document.getElementById("console-output");
+        
+        // Render user message bubble
+        const userBubble = document.createElement("div");
+        userBubble.style.cssText = "background: #18181b; border: 1px solid #27272a; padding: 8px 10px; border-radius: 4px; font-size: 12.5px; align-self: flex-end; color: #fff; max-width: 90%;";
+        userBubble.textContent = msg;
+        consoleOutput.appendChild(userBubble);
+        input.value = "";
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+        // Render loading agent bubble
+        const agentBubble = document.createElement("div");
+        agentBubble.className = "chat-bubble-agent";
+        agentBubble.innerHTML = `<strong>Agent:</strong><p style="margin-top:4px; color:#a1a1aa;">Thinking...</p>`;
+        consoleOutput.appendChild(agentBubble);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+        try {
+          const selectedModel = document.getElementById("ai-model-select") ? document.getElementById("ai-model-select").value : "llama3.2:1b";
+          const code = window.editor ? window.editor.getValue() : "";
+          const currentFs = typeof fileSystem !== 'undefined' ? fileSystem : [];
+          const currentActiveId = typeof activeFileId !== 'undefined' ? activeFileId : null;
+          const currentLang = (select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text)
+            ? select.options[select.selectedIndex].text
+            : selectedName;
+
+          let useSocket = false;
+          try {
+            if (typeof io !== "undefined") {
+              if (!window.socket) {
+                window.socket = io();
+              }
+              useSocket = !!window.socket;
+            }
+          } catch (e) {
+            console.warn("Socket init failed, falling back to HTTP:", e);
+          }
+
+          let responseText = "";
+          let workspaceBadgeHtml = "";
+          const createdFolders = [];
+          const createdFiles = [];
+          let firstCreatedFileId = null;
+
+          agentBubble.innerHTML = `<strong>Teacher Agent:</strong><div class="agent-response-body" style="margin-top:4px; color:#d4d4d8; font-size:12px; line-height:1.5;"></div>`;
+          const responseBody = agentBubble.querySelector('.agent-response-body');
+
+          const updateBubble = () => {
+            const formattedReply = escapeHtml(responseText)
+              .replace(/```([\s\S]*?)```/g, '<pre style="background:#000; padding:6px; border:1px solid #1F1F1F; border-radius:3px; font-family:monospace; margin-top:4px;"><code>$1</code></pre>')
+              .replace(/\n/g, '<br/>');
+            
+            responseBody.innerHTML = formattedReply + workspaceBadgeHtml;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+          };
+
+          const handleActions = (actions) => {
+            if (actions && Array.isArray(actions) && actions.length > 0) {
+              actions.forEach(action => {
+                if (action.type === 'create_folder' && window.agentActions) {
+                  window.agentActions.createFolder(action.name, action.parentFolder);
+                  if (!createdFolders.includes(action.name)) createdFolders.push(action.name);
+                } else if (action.type === 'create_file' && window.agentActions) {
+                  const fId = window.agentActions.createFile(action.name, action.content, action.folderName);
+                  if (!firstCreatedFileId && fId) firstCreatedFileId = fId;
+                  if (!createdFiles.includes(action.name)) createdFiles.push(action.name);
+                } else if (action.type === 'write_code' && window.agentActions) {
+                  window.agentActions.writeCode(action.name, action.content);
+                  if (!createdFiles.includes(action.name)) createdFiles.push(action.name);
+                }
+              });
+
+              if (firstCreatedFileId && typeof switchToFile === 'function') {
+                switchToFile(firstCreatedFileId);
+              }
+
+              if (createdFolders.length > 0 || createdFiles.length > 0) {
+                workspaceBadgeHtml = `
+                  <div style="margin-top:8px; padding:7px 10px; background:#08080a; border:1px solid #1F1F1F; border-radius:4px; font-family:'JetBrains Mono', monospace; font-size:11px;">
+                    <div style="color:#2563eb; font-weight:600; display:flex; align-items:center; gap:6px;">
+                      <i class="ri-folder-add-line"></i>
+                      <span>Workspace Files Created:</span>
+                    </div>
+                    <div style="margin-top:3px; color:#9ca3af; font-size:10.5px; line-height:1.4;">
+                      ${createdFolders.length > 0 ? `<div>📁 Folder: <span style="color:#e4e4e7;">${createdFolders.join(', ')}</span></div>` : ''}
+                      ${createdFiles.length > 0 ? `<div>📄 Files (${createdFiles.length}): <span style="color:#60a5fa;">${createdFiles.join(', ')}</span></div>` : ''}
+                    </div>
+                  </div>
+                `;
+              }
+            }
+          };
+
+          if (useSocket && window.socket) {
+            // ── Socket.IO streaming path ────────────────────────────────────
+            const TIMEOUT_MS = 180_000; // 3 min — 30B models need time
+            let timeoutHandle = null;
+            let heartbeatHandle = null;
+            const startedAt = Date.now();
+
+            // Disable send button so the user can't double-send while waiting
+            const sendBtn = document.querySelector(".submit-btn");
+            const promptInput = document.getElementById("console-input");
+            if (sendBtn)  sendBtn.disabled = true;
+            if (promptInput) promptInput.disabled = true;
+
+            // Named handlers so we can remove exactly these, not all listeners
+            function onChunk(chunk) {
+              responseText += chunk;
+              updateBubble();
+            }
+            function onThought(thought) {
+              responseText += `\n> *(${escapeHtml(thought)})*\n`;
+              updateBubble();
+            }
+            function onToolCall(toolCall) {
+              responseText += `\n> *(Calling tool ${escapeHtml(toolCall.name)}…)*\n`;
+              updateBubble();
+            }
+            function cleanup() {
+              clearTimeout(timeoutHandle);
+              clearInterval(heartbeatHandle);
+              window.socket.off("ai_chunk",    onChunk);
+              window.socket.off("ai_thought",  onThought);
+              window.socket.off("ai_tool_call",onToolCall);
+              window.socket.off("ai_error",    onError);
+              window.socket.off("ai_complete", onComplete);
+              if (sendBtn)    sendBtn.disabled = false;
+              if (promptInput) promptInput.disabled = false;
+            }
+            function onError(error) {
+              cleanup();
+              agentBubble.innerHTML = `<strong>Agent Error:</strong><p style="margin-top:4px; color:#ef4444;">${escapeHtml(error.message)}</p>`;
+            }
+            function onComplete(data) {
+              cleanup();
+              handleActions(data.actions);
+              if (!responseText) responseText = data.response || "Task completed.";
+              updateBubble();
+            }
+
+            // Register all listeners before emitting
+            window.socket.on("ai_chunk",    onChunk);
+            window.socket.on("ai_thought",  onThought);
+            window.socket.on("ai_tool_call",onToolCall);
+            window.socket.on("ai_error",    onError);
+            window.socket.on("ai_complete", onComplete);
+
+            // Heartbeat — update the "Thinking..." text every 15s so the user
+            // sees progress and knows the agent hasn't frozen
+            heartbeatHandle = setInterval(() => {
+              const elapsed = Math.round((Date.now() - startedAt) / 1000);
+              const dots = ".".repeat((Math.floor(elapsed / 3) % 3) + 1);
+              const statusLine = responseText
+                ? "" // model is already streaming, don't overwrite
+                : `<em style="color:#6b7280; font-size:11px;">⏳ Working${dots} (${elapsed}s)</em>`;
+              if (statusLine && responseBody) responseBody.innerHTML = statusLine;
+            }, 15_000);
+
+            // Hard timeout
+            timeoutHandle = setTimeout(() => {
+              cleanup();
+              const elapsed = Math.round(TIMEOUT_MS / 1000);
+              agentBubble.innerHTML = `
+                <strong>Teacher Agent:</strong>
+                <p style="margin-top:4px; color:#f59e0b;">
+                  ⏱ No response after ${elapsed}s. The model is too slow for this task.
+                  ${responseText ? '<br/><br/><em>Partial output:</em><br/>' + escapeHtml(responseText) : ''}
+                  <br/><br/>Switch to a faster model — e.g. <code>llama3.2:1b</code> or <code>qwen2.5:3b</code>.
+                </p>`;
+            }, TIMEOUT_MS);
+
+            window.socket.emit("ask-ai", {
+              prompt: msg,
+              model: selectedModel,
+              fileSystem: currentFs,
+              activeFileId: currentActiveId,
+              code,
+              language: currentLang
+            });
+
+          } else {
+            // ── HTTP fallback path ─────────────────────────────────────────
+            const sendBtn = document.querySelector(".submit-btn");
+            const promptInput = document.getElementById("console-input");
+            if (sendBtn) sendBtn.disabled = true;
+            if (promptInput) promptInput.disabled = true;
+
+            try {
+              responseBody.innerHTML = `<em>Thinking…</em>`;
+              const controller = new AbortController();
+              const httpTimeout = setTimeout(() => controller.abort(), 90_000);
+
+              const res = await fetch("/ask-ai", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                signal: controller.signal,
+                body: JSON.stringify({
+                  prompt: msg,
+                  model: selectedModel,
+                  fileSystem: currentFs,
+                  activeFileId: currentActiveId,
+                  code,
+                  language: currentLang
+                })
+              });
+              clearTimeout(httpTimeout);
+
+              const data = await res.json();
+              if (!res.ok) {
+                throw new Error(data.response || `Server returned status ${res.status}`);
+              }
+
+              handleActions(data.actions);
+              responseText = data.response || "Done.";
+              updateBubble();
+            } catch (fetchErr) {
+              const msg2 = fetchErr.name === "AbortError"
+                ? "Request timed out after 90s. Try a smaller model."
+                : fetchErr.message;
+              agentBubble.innerHTML = `<strong>Agent Error:</strong><p style="margin-top:4px; color:#ef4444;">${escapeHtml(msg2)}</p>`;
+            } finally {
+              if (sendBtn) sendBtn.disabled = false;
+              if (promptInput) promptInput.disabled = false;
+            }
+          }
+
+
+        } catch (err) {
+          agentBubble.innerHTML = `<strong>Agent Error:</strong><p style="margin-top:4px; color:#ef4444;">${escapeHtml(err.message)}</p>`;
+        }
+
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    window.handleSendPrompt = handleSendPrompt;
+    const promptForm = document.getElementById("prompt");
+    if (promptForm) {
+      promptForm.addEventListener("submit", handleSendPrompt);
+    }
+
+    async function refreshModels() {
+      const select = document.getElementById("ai-model-select");
+      if (!select) return;
+      
+      const prevVal = select.value;
+      const originalHtml = select.innerHTML;
+      
+      try {
+        const res = await fetch("/api/models");
+        const data = await res.json();
+        if (data.models && Array.isArray(data.models) && data.models.length > 0) {
+          select.innerHTML = "";
+          data.models.forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = m.name || m.id;
+            if (m.id === prevVal) opt.selected = true;
+            select.appendChild(opt);
+          });
+          if (!select.value && select.options.length > 0) {
+            select.selectedIndex = 0;
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to refresh models:", err);
+      }
+    }
+
+    // Auto-fetch fresh model list from local and cloud on load
+    window.addEventListener("DOMContentLoaded", () => {
+      refreshModels();
+    });
+
+    async function saveWorkspaceToMongoDB() {
+      if (!window.editor) {
+        alert("Editor not ready");
+        return;
+      }
+      const projectName = prompt("Enter workspace name to save:");
+      if (!projectName) return;
+      const projectDesc = prompt("Enter a brief description:");
+
+      terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Saving workspace to MongoDB...</div>`;
+      
+      const zip = new JSZip();
+      // Recursive function to add files to zip based on fileSystem array defined in editor.js
+      const addToZip = (parentId, currentFolder) => {
+        const items = typeof fileSystem !== 'undefined' ? fileSystem.filter(f => f.parentId === parentId) : [];
+        items.forEach(item => {
+          if (item.type === 'folder') {
+            const newFolder = currentFolder.folder(item.name);
+            addToZip(item.id, newFolder);
+          } else {
+            const content = (typeof models !== 'undefined' && models[item.id]) ? models[item.id].getValue() : item.content;
+            currentFolder.file(item.name, content);
+          }
+        });
+      };
+      
+      if (typeof fileSystem !== 'undefined') {
+        addToZip('root', zip);
+      } else {
+        const code = window.editor.getValue();
+        zip.file("main.js", code);
+      }
+      
+      try {
+        const content = await zip.generateAsync({ type: "blob" });
+        const formData = new FormData();
+        formData.append("projectName", projectName);
+        formData.append("projectDescription", projectDesc || "Code Editor Workspace");
+        formData.append("projectProgrammingLanguage", selectedName);
+        formData.append("projectFile", content, projectName + ".zip");
+
+        const res = await fetch("/save-project", {
+          method: "POST",
+          body: formData
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+          window.hasUnsavedChanges = false;
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-success">Workspace saved successfully! Check Dashboard.</div>`;
+        } else {
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error saving: ${escapeHtml(data.error || "Unknown error")}</div>`;
+        }
+      } catch (err) {
+        terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function exportToPDF() {
+      if (!window.editor) return;
+      
+      const rawPdfName = prompt("Enter PDF document name:");
+      if (!rawPdfName) return;
+      const pdfName = rawPdfName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) || "document";
+
+      terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Generating PDF and uploading...</div>`;
+      
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.setFont("courier");
+        doc.setFontSize(10);
+        
+        const code = window.editor.getValue();
+        const splitText = doc.splitTextToSize(code, 180);
+        doc.text(splitText, 10, 10);
+        
+        const pdfBlob = doc.output("blob");
+        
+        const formData = new FormData();
+        formData.append("pdfName", pdfName);
+        formData.append("pdfFile", pdfBlob, pdfName + ".pdf");
+        
+        const res = await fetch("/save-pdf", {
+          method: "POST",
+          body: formData
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-success">PDF saved to Dashboard!</div>`;
+          doc.save(pdfName + ".pdf"); 
+        } else {
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error saving PDF: ${escapeHtml(data.error || "Unknown error")}</div>`;
+        }
+      } catch (err) {
+        terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    // ── HTML Preview ──────────────────────────────────────────────────────────
+    // Collects html/css/js from the workspace, sends to /preview, opens new tab.
+    async function openHtmlPreview() {
+      const btn = document.getElementById("btn-preview");
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i> Loading…'; }
+
+      try {
+        // Helper: find a file in the workspace by extension
+        function findFile(ext) {
+          return fileSystem.find(f => f.type === "file" && f.name.toLowerCase().endsWith(ext));
+        }
+
+        // Gather content — prioritise dedicated files if they exist
+        const activeFile = fileSystem.find(f => f.id === activeFileId && f.type === "file");
+        const activeExt  = activeFile ? activeFile.name.split(".").pop().toLowerCase() : "";
+
+        let html = "", css = "", js = "";
+
+        if (activeExt === "html" || activeExt === "htm") {
+          // Active file is HTML — use it directly, also pick up any .css / .js siblings
+          html = window.editor ? window.editor.getValue() : (activeFile?.content || "");
+          const cssFile = findFile(".css");
+          const jsFile  = findFile(".js");
+          if (cssFile) css = cssFile.content || "";
+          if (jsFile)  js  = jsFile.content  || "";
+        } else if (activeExt === "css") {
+          css = window.editor ? window.editor.getValue() : (activeFile?.content || "");
+          const htmlFile = findFile(".html") || findFile(".htm");
+          const jsFile   = findFile(".js");
+          if (htmlFile) html = htmlFile.content || "";
+          if (jsFile)   js   = jsFile.content   || "";
+        } else if (activeExt === "js") {
+          js = window.editor ? window.editor.getValue() : (activeFile?.content || "");
+          const htmlFile = findFile(".html") || findFile(".htm");
+          const cssFile  = findFile(".css");
+          if (htmlFile) html = htmlFile.content || "";
+          if (cssFile)  css  = cssFile.content  || "";
+        } else {
+          // Unknown type — wrap whatever is in the editor in a basic HTML shell
+          html = `<pre style="font-family:monospace;padding:1rem">${escapeHtml(window.editor ? window.editor.getValue() : "")}</pre>`;
+        }
+
+        if (!html && !css && !js) {
+          alert("Nothing to preview — open an HTML, CSS, or JS file first.");
+          return;
+        }
+
+        const res = await fetch("/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ html, css, js }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert("Preview error: " + (err.error || res.status));
+          return;
+        }
+
+        const { id } = await res.json();
+        window.open("/preview/" + id, "_blank", "noopener,noreferrer");
+      } catch (err) {
+        alert("Preview failed: " + err.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ri-eye-line"></i> Preview'; }
+      }
+    }
+  </script>
+</body>
+</html>
