@@ -4,13 +4,9 @@ import User from '../../Models/userModels/userModels.js';
 
 const registerCodeEditorController = async (req, res) => {
     try {
-        const { username, email, password } = req.body;
         const { username, email, password, confirmPassword } = req.body;
 
-        if (!username || !email || !password || 
-            typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
-            return res.render('auth/registerCodeEditor', { error: 'All fields are required and must be valid text.', formData: {} });
-        const isJson = req.xhr || req.headers.accept?.includes('application/json');
+        const isJson = Boolean(req.xhr || req.headers.accept?.includes('application/json'));
 
         const sendError = (status, message, formData = {}) => {
             if (isJson) {
@@ -34,10 +30,6 @@ const registerCodeEditorController = async (req, res) => {
         const cleanUsername = username.trim();
         const cleanEmail = email.trim().toLowerCase();
 
-        if (cleanUsername.length < 3 || cleanUsername.length > 30 || !/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
-            return res.render('auth/registerCodeEditor', { 
-                error: 'Username must be 3-30 alphanumeric characters (underscores and hyphens allowed).', 
-                formData: { username: cleanUsername, email: cleanEmail } 
         // 2. Validate username format (3-30 chars, alphanumeric, underscores, dots, hyphens)
         const usernameRegex = /^[a-zA-Z0-9_.-]{3,30}$/;
         if (!usernameRegex.test(cleanUsername)) {
@@ -58,16 +50,12 @@ const registerCodeEditorController = async (req, res) => {
 
         // 4. Validate password length
         if (password.length < 8 || password.length > 128) {
-            return res.render('auth/registerCodeEditor', { 
-                error: 'Password must be between 8 and 128 characters.', 
-                formData: { username: cleanUsername, email: cleanEmail } 
             return sendError(400, 'Password must be between 8 and 128 characters.', {
                 username: cleanUsername,
                 email: cleanEmail
             });
         }
 
-        const existingUser = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
         // 5. Validate password match
         if (password !== confirmPassword) {
             return sendError(400, 'Passwords do not match.', {
@@ -81,10 +69,6 @@ const registerCodeEditorController = async (req, res) => {
             $or: [{ email: cleanEmail }, { username: cleanUsername }]
         });
         if (existingUser) {
-            const field = existingUser.email === cleanEmail ? 'email' : 'username';
-            return res.render('auth/registerCodeEditor', { 
-                error: `An account with that ${field} already exists.`, 
-                formData: { username: cleanUsername, email: cleanEmail } 
             const isEmailTaken = existingUser.email === cleanEmail;
             return sendError(409, isEmailTaken ? 'An account with that email already exists.' : 'That username is already taken.', {
                 username: cleanUsername,
@@ -105,7 +89,6 @@ const registerCodeEditorController = async (req, res) => {
 
         await newUser.save();
 
-        res.redirect('/login');
         if (isJson) {
             return res.status(201).json({
                 success: true,
@@ -117,9 +100,8 @@ const registerCodeEditorController = async (req, res) => {
         return res.redirect(`/login?registered=true&email=${encodeURIComponent(cleanEmail)}`);
     } catch (error) {
         console.error('Registration error:', error);
-        res.render('auth/registerCodeEditor', { error: 'Something went wrong. Try again.', formData: {} });
 
-        const isJson = req.xhr || req.headers.accept?.includes('application/json');
+        const isJson = Boolean(req.xhr || req.headers.accept?.includes('application/json'));
         const fallbackFormData = {
             username: typeof req.body?.username === 'string' ? req.body.username.trim() : '',
             email: typeof req.body?.email === 'string' ? req.body.email.trim() : ''

@@ -42,10 +42,10 @@ const loginCodeEditorController = async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        res.redirect('/DashboardCodeEditor');
+        return res.redirect('/DashboardCodeEditor');
     } catch (error) {
         console.error(error);
-        res.render('auth/loginCodeEditor', { error: 'Something went wrong. Try again.' });
+        return res.render('auth/loginCodeEditor', { error: 'Something went wrong. Try again.' });
     }
 };
 

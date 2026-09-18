@@ -6,7 +6,6 @@ import logoutCodeEditorController from '../../../Controllers/authControllers/log
 const router = Router();
 
 router.get('/login', (req, res) => {
-    res.render('auth/loginCodeEditor', { error: undefined, formData: {} });
     if (req.cookies?.token) {
         try {
             jwt.verify(req.cookies.token, process.env.JWT_SECRET);
@@ -16,12 +15,12 @@ router.get('/login', (req, res) => {
 
     const success = req.query.registered ? 'Account created successfully! Please log in.' : undefined;
     const email = typeof req.query.email === 'string' ? req.query.email : '';
-    res.render('auth/loginCodeEditor', { error: undefined, success, formData: { email } });
+    return res.render('auth/loginCodeEditor', { error: undefined, success, formData: { email } });
 });
 
 // Backward compatibility redirect for old link
 router.get('/loginCodeEditor', (req, res) => {
-    res.redirect('/login');
+    return res.redirect('/login');
 });
 
 router.post('/login', loginCodeEditorController);

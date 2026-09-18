@@ -6,18 +6,20 @@ services:
     container_name: personal-code-editor
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "${PORT:-3001}:3001"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - PORT=3001
       - NODE_ENV=production
-      - COOKIE_SECURE=false
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
       - LOCAL_OLLAMA_URL=http://ollama:11434
     volumes:
       - uploads_data:/app/src/public/uploads
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
     networks:
       - editor-net
 
@@ -31,7 +33,7 @@ services:
       - ollama_data:/root/.ollama
     networks:
       - editor-net
-    # Optional GPU acceleration for NVIDIA:
+    # To enable GPU acceleration on NVIDIA GPUs, uncomment the block below:
     # deploy:
     #   resources:
     #     reservations:
@@ -42,7 +44,9 @@ services:
 
 volumes:
   uploads_data:
+    name: editor_uploads_data
   ollama_data:
+    name: editor_ollama_data
 
 networks:
   editor-net:
