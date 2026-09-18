@@ -1,8 +1,9 @@
 const logoutCodeEditorController = (req, res) => {
+    const isSecure = process.env.COOKIE_SECURE === 'true';
     res.clearCookie('token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isSecure,
+        sameSite: 'lax',
     });
 
     if (req.xhr || req.headers.accept?.includes('application/json')) {

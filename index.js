@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
+import session from 'express-session';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
@@ -93,6 +94,24 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Trust proxy for Docker and reverse proxies
+app.set('trust proxy', 1);
+
+// Session middleware — secure only if accessing via HTTPS
+const isCookieSecure = process.env.COOKIE_SECURE === 'true';
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'your-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { 
+        secure: isCookieSecure, // Set to true ONLY if accessing via HTTPS
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000 
+    }
+}));
+
 app.use(express.static(path.join(__dirname, 'src/public')));
 app.set('views', path.join(__dirname, 'src/Views'));
 app.set('view engine', 'ejs');

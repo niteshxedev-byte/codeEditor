@@ -12,6 +12,7 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=production
+      - COOKIE_SECURE=false
       - LOCAL_OLLAMA_URL=http://ollama:11434
     volumes:
       - uploads_data:/app/src/public/uploads
