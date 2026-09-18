@@ -24,6 +24,7 @@
                         snow:    '#FFFFFF',
                         muted:   '#6B7280',
                         danger:  '#EF4444',
+                        ok:      '#22C55E',
                     },
                     fontFamily: {
                         sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
@@ -106,6 +107,13 @@
             <% if (typeof error !== 'undefined' && error) { %>
             <div class="mb-6 px-4 py-3 border border-danger/40 bg-danger/10 rounded-sm text-sm text-danger">
                 <%= error %>
+            </div>
+            <% } %>
+
+            <!-- Success flash — Express passes `success` from res.render() -->
+            <% if (typeof success !== 'undefined' && success) { %>
+            <div class="mb-6 px-4 py-3 border border-ok/40 bg-ok/10 rounded-sm text-sm text-ok">
+                <%= success %>
             </div>
             <% } %>
 

@@ -310,6 +310,27 @@
 
         confirmInput.addEventListener('input', checkMatch);
         pwInput.addEventListener('input', checkMatch);
+
+        // ─── Form submit validation ──────────────────────────────────────
+        const registerForm = document.querySelector('form');
+        if (registerForm) {
+            registerForm.addEventListener('submit', (e) => {
+                if (pwInput.value !== confirmInput.value) {
+                    e.preventDefault();
+                    matchMsg.textContent = 'passwords do not match';
+                    matchMsg.style.color = '#EF4444';
+                    confirmInput.focus();
+                    return;
+                }
+                if (pwInput.value.length < 8) {
+                    e.preventDefault();
+                    strengthLabel.textContent = 'password must be at least 8 characters';
+                    strengthLabel.style.color = '#EF4444';
+                    pwInput.focus();
+                    return;
+                }
+            });
+        }
     </script>
 
 </body>
