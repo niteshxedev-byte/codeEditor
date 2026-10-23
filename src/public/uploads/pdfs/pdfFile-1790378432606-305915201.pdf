@@ -1,0 +1,301 @@
+%PDF-1.3
+%ºß¬à
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 2561
+>>
+stream
+0.5670000000000001 w
+0 G
+BT
+/F5 10 Tf
+11.5 TL
+0 g
+28.3464566929133888 813.5435433070865656 Td
+(// Basic function with type annotations) Tj
+T* (function greet\(name: string\): string {) Tj
+T* (  return `Hello, ${name}!`;) Tj
+T* (}) Tj
+T* () Tj
+T* (// Arrow function with explicit return type) Tj
+T* (const add = \(a: number, b: number\): number => {) Tj
+T* (  return a + b;) Tj
+T* (};) Tj
+T* () Tj
+T* (// Function with optional parameter) Tj
+T* (function greetOptional\(name: string, greeting?: string\): string {) Tj
+T* (  const g = greeting ?? "Hello";) Tj
+T* (  return `${g}, ${name}!`;) Tj
+T* (}) Tj
+T* () Tj
+T* (// Function with default parameter) Tj
+T* (function greetDefault\(name: string, greeting = "Hi"\): string {) Tj
+T* (  return `${greeting}, ${name}!`;) Tj
+T* (}) Tj
+T* () Tj
+T* (// Function with rest parameters) Tj
+T* (function sum\(...numbers: number[]\): number {) Tj
+T* (  return numbers.reduce\(\(acc, n\) => acc + n, 0\);) Tj
+T* (}) Tj
+T* () Tj
+T* (// Generic function) Tj
+T* (function identity<T>\(value: T\): T {) Tj
+T* (  return value;) Tj
+T* (}) Tj
+T* () Tj
+T* (// Function type as a type alias) Tj
+T* (type MathOperation = \(a: number, b: number\) => number;) Tj
+T* () Tj
+T* (const multiply: MathOperation = \(a, b\) => a * b;) Tj
+T* (const divide: MathOperation = \(a, b\) => a / b;) Tj
+T* () Tj
+T* (// Higher-order function) Tj
+T* (function applyOperation\(a: number, b: number, op: MathOperation\): number {) Tj
+T* (  return op\(a, b\);) Tj
+T* (}) Tj
+T* () Tj
+T* (// Async function) Tj
+T* (async function fetchUser\(id: number\): Promise<{ id: number; name: string }> {) Tj
+T* (  // Simulated async operation) Tj
+T* (  return { id, name: `User ${id}` };) Tj
+T* (}) Tj
+T* () Tj
+T* (// Usage examples) Tj
+T* (console.log\(greet\("Alice"\)\);                    // "Hello, Alice!") Tj
+T* (console.log\(add\(5, 3\)\);                         // 8) Tj
+T* (console.log\(greetOptional\("Bob"\)\);              // "Hello, Bob!") Tj
+T* (console.log\(greetOptional\("Bob", "Hey"\)\);       // "Hey, Bob!") Tj
+T* (console.log\(greetDefault\("Carol"\)\);             // "Hi, Carol!") Tj
+T* (console.log\(sum\(1, 2, 3, 4, 5\)\);                // 15) Tj
+T* (console.log\(identity<string>\("test"\)\);          // "test") Tj
+T* (console.log\(identity\(42\)\);                      // 42) Tj
+T* (console.log\(applyOperation\(10, 5, multiply\)\);   // 50) Tj
+T* (console.log\(applyOperation\(10, 5, divide\)\);     // 2) Tj
+T* () Tj
+T* (// Async usage) Tj
+T* (fetchUser\(1\).then\(user => console.log\(user\)\);   // { id: 1, name: "User 1" }) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R ]
+/Count 1
+>>
+endobj
+5 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+6 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+7 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+8 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+9 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+10 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 5 0 R
+/F2 6 0 R
+/F3 7 0 R
+/F4 8 0 R
+/F5 9 0 R
+/F6 10 0 R
+/F7 11 0 R
+/F8 12 0 R
+/F9 13 0 R
+/F10 14 0 R
+/F11 15 0 R
+/F12 16 0 R
+/F13 17 0 R
+/F14 18 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+19 0 obj
+<<
+/Producer (jsPDF 2.5.1)
+/CreationDate (D:20260926045032+05'30')
+>>
+endobj
+20 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 21
+0000000000 65535 f 
+0000002765 00000 n 
+0000004582 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000002822 00000 n 
+0000002947 00000 n 
+0000003077 00000 n 
+0000003210 00000 n 
+0000003347 00000 n 
+0000003470 00000 n 
+0000003599 00000 n 
+0000003731 00000 n 
+0000003867 00000 n 
+0000003995 00000 n 
+0000004122 00000 n 
+0000004251 00000 n 
+0000004384 00000 n 
+0000004486 00000 n 
+0000004830 00000 n 
+0000004916 00000 n 
+trailer
+<<
+/Size 21
+/Root 20 0 R
+/Info 19 0 R
+/ID [ <BBD347E9AD0175260AF57BAD81F2D6A5> <BBD347E9AD0175260AF57BAD81F2D6A5> ]
+>>
+startxref
+5020
+%%EOF

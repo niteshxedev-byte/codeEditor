@@ -520,3 +520,290 @@ body {
 .terminal-dim {
   color: var(--text-muted);
 }
+
+/* ── Native IDE Modal Dialog & Form Styling ── */
+dialog.ide-modal-dialog {
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  max-width: 480px;
+  width: 90vw;
+  margin: auto;
+  overflow: visible;
+}
+
+dialog.ide-modal-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: ideFadeIn 0.15s ease-out;
+}
+
+.ide-dialog-card {
+  background: #0d0d0f;
+  border: 1px solid #222228;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 20px 22px;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  animation: ideSlideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ideFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ideSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ide-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.ide-dialog-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ide-dialog-title-group i {
+  font-size: 18px;
+  color: var(--accent-blue);
+}
+
+.ide-dialog-title-group h3 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.ide-dialog-close {
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.ide-dialog-close:hover {
+  color: #ffffff;
+  background-color: #1f1f23;
+}
+
+.ide-dialog-subtitle {
+  font-size: 12px;
+  color: #a1a1aa;
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+.ide-dialog-subtitle:empty {
+  display: none;
+}
+
+.ide-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ide-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ide-form-group label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a1a1aa;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.ide-form-group input,
+.ide-form-group textarea {
+  background: #000000;
+  border: 1px solid #27272a;
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ide-form-group input:focus,
+.ide-form-group textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
+.ide-dialog-error {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #f87171;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.ide-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.ide-btn {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ide-btn-secondary {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #d4d4d8;
+}
+
+.ide-btn-secondary:hover {
+  background: #27272a;
+  color: #ffffff;
+}
+
+.ide-btn-primary {
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  color: #ffffff;
+}
+
+.ide-btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.ide-btn-danger {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+  color: #ffffff;
+}
+
+.ide-btn-danger:hover {
+  background: #b91c1c;
+}
+
+/* ── Non-blocking IDE Toast Notifications ── */
+.ide-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 400px;
+}
+
+.ide-toast {
+  pointer-events: auto;
+  background: #0f0f12;
+  border: 1px solid #222228;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #ffffff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  animation: toastSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  cursor: pointer;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ide-toast.fade-out {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.ide-toast-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.ide-toast.toast-info .ide-toast-icon { color: #3b82f6; }
+.ide-toast.toast-success .ide-toast-icon { color: #22c55e; }
+.ide-toast.toast-warning .ide-toast-icon { color: #eab308; }
+.ide-toast.toast-error .ide-toast-icon { color: #ef4444; }
+
+.ide-toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* ── Header & Explorer Icon Buttons ── */
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-icon:hover {
+  color: var(--text-snow);
+  background: var(--bg-elevated);
+}
+

@@ -37,15 +37,15 @@ const loginCodeEditorController = async (req, res) => {
 
         res.cookie('token', token, {
             httpOnly: true,
-            secure: isSecure, // Set to true ONLY if accessing via HTTPS
-            sameSite: 'lax',  // Required for cookies to persist across top-level redirects
+            secure: isSecure,
+            sameSite: 'lax',
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
         return res.redirect('/DashboardCodeEditor');
     } catch (error) {
-        console.error(error);
-        return res.render('auth/loginCodeEditor', { error: 'Something went wrong. Try again.' });
+        console.error("Login error:", error);
+        return res.render('auth/loginCodeEditor', { error: 'Something went wrong. Try again.', formData: {} });
     }
 };
 

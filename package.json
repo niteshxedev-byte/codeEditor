@@ -1,15 +1,13 @@
 {
-  "name": "day1",
+  "name": "personal-code-editor",
   "version": "1.0.0",
+  "description": "Personal Code Editor — Modern Web Code Editor with Monaco and AI Assistance",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "type": "module",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -25,14 +23,12 @@
     "ejs": "^3.1.10",
     "express": "^5.1.0",
     "express-session": "^1.19.0",
-    "google-auth-library": "^10.9.0",
     "gsap": "^3.13.0",
     "jsonwebtoken": "^9.0.2",
     "langchain": "^1.5.11",
     "mongoose": "^8.19.3",
     "morgan": "^1.10.1",
     "multer": "^2.4.0",
-    "nodemailer": "^7.0.10",
     "socket.io": "^4.8.3",
     "zod": "^3.25.76"
   },

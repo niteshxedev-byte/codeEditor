@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 
 import aboutProjectRoute from "./src/Routes/aboutProjectRoutes/aboutProjectRoute.js";
 import loginRoute from "./src/Routes/authRoute/loginRoutes/loginRoute.js";
@@ -27,7 +28,7 @@ const app = express();
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-    cors: { 
+    cors: {
         origin: (origin, callback) => {
             if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
                 callback(null, true);
@@ -35,7 +36,7 @@ const io = new Server(httpServer, {
                 callback(new Error("CORS not allowed"));
             }
         },
-        credentials: true 
+        credentials: true
     }
 });
 
@@ -44,8 +45,28 @@ app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     next();
+});
+
+// Authenticate socket connections using JWT cookie
+io.use((socket, next) => {
+    try {
+        const rawCookie = socket.handshake.headers.cookie;
+        if (!rawCookie) {
+            return next(new Error("Authentication required: No cookies provided"));
+        }
+        const match = rawCookie.match(/(?:^|;\s*)token=([^;]+)/);
+        const token = match ? decodeURIComponent(match[1]) : null;
+        if (!token) {
+            return next(new Error("Authentication required: Session token missing"));
+        }
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.user = decoded;
+        next();
+    } catch (err) {
+        return next(new Error("Authentication failed: Invalid or expired token"));
+    }
 });
 
 // Attach io to req so routes can access if needed
@@ -59,7 +80,7 @@ io.on('connection', (socket) => {
     socket.on('ask-ai', async (data) => {
         try {
             const { prompt, model, fileSystem, activeFileId, code, language } = data;
-            
+
             const emitter = {
                 onAnalysisChunk: (chunk) => socket.emit('ai_chunk', chunk),
                 onThought: (thought) => socket.emit('ai_thought', thought),
@@ -87,7 +108,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {});
+    socket.on('disconnect', () => { });
 });
 
 app.use(morgan('dev'));
@@ -104,11 +125,11 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: { 
+    cookie: {
         secure: isCookieSecure, // Set to true ONLY if accessing via HTTPS
         httpOnly: true,
         sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000 
+        maxAge: 24 * 60 * 60 * 1000
     }
 }));
 

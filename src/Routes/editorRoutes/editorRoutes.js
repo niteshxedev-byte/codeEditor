@@ -31,7 +31,6 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
     // Sanitize extension to strictly allowed characters
     const ext = path.extname(file.originalname).toLowerCase().replace(/[^a-z0-9.]/g, "");
     cb(null, file.fieldname + "-" + uniqueSuffix + ext);
@@ -39,7 +38,7 @@ const storage = multer.diskStorage({
 });
 
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit to prevent DoS
@@ -70,13 +69,13 @@ router.get("/editor", requireAuth, async (req, res) => {
 });
 
 // Get Available AI Models from local & cloud
-router.get("/api/models", async (req, res) => {
+router.get("/api/models", authenticate, async (req, res) => {
   const models = await getAvailableModels();
   res.json({ models });
 });
 
 // Run Code Endpoint
-router.post("/runCode", async (req, res) => {
+router.post("/runCode", authenticate, async (req, res) => {
   try {
     const { code, language_id, stdin } = req.body;
 
@@ -108,7 +107,7 @@ router.post("/runCode", async (req, res) => {
 router.post("/save-project", authenticate, upload.single("projectFile"), async (req, res) => {
   try {
     const { projectName, projectDescription, projectProgrammingLanguage } = req.body;
-    
+
     if (!projectName || !req.file) {
       return res.status(400).json({ error: "Project name and file are required" });
     }
@@ -135,7 +134,7 @@ router.post("/save-project", authenticate, upload.single("projectFile"), async (
 router.post("/save-pdf", authenticate, upload.single("pdfFile"), async (req, res) => {
   try {
     const { pdfName } = req.body;
-    
+
     if (!pdfName || !req.file) {
       return res.status(400).json({ error: "PDF name and file are required" });
     }
@@ -157,7 +156,7 @@ router.post("/save-pdf", authenticate, upload.single("pdfFile"), async (req, res
 });
 
 // Simple Teacher Agent Endpoint
-router.post("/ask-ai", async (req, res) => {
+router.post("/ask-ai", authenticate, async (req, res) => {
   try {
     const { prompt, model, fileSystem, activeFileId, code, language } = req.body;
     if (!prompt) {
@@ -270,7 +269,7 @@ router.get("/preview/:id", requireAuth, (req, res) => {
   res
     .setHeader("Content-Type", "text/html; charset=utf-8")
     .setHeader("X-Content-Type-Options", "nosniff")
-    .setHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:;")
+    .setHeader("Content-Security-Policy", "sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: blob:; font-src data: https:;")
     .setHeader("X-Frame-Options", "DENY")
     .send(entry.html);
 });

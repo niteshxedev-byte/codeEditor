@@ -1,0 +1,563 @@
+[
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-001-AUTH-BYPASS-SWITCH-USER",
+    "title": "Unauthenticated Account Takeover via User Switch Endpoint",
+    "description": "The POST /api/users/switch endpoint permitted any unauthenticated client to specify an arbitrary targetUserId and receive a valid 7-day signed JWT authentication cookie, completely bypassing password authentication and compromising any user account.",
+    "root_cause": "Desktop Electron developer convenience feature left unauthenticated on the public Express server without credential verification.",
+    "intended_behavior": "User switching must strictly require valid credential authentication, or the endpoint must be completely removed in production web environments.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 69,
+        "scope": "router.post('/api/users/switch')",
+        "description": "Incoming unauthenticated POST request with targetUserId in body"
+      },
+      {
+        "kind": "propagation",
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 76,
+        "scope": "User.findOne({ userId: targetUserId.trim() })",
+        "description": "Locates arbitrary target user in database without verifying caller credentials"
+      },
+      {
+        "kind": "sink",
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 89,
+        "scope": "res.cookie('token', token)",
+        "description": "Signs and issues JWT session cookie giving full access to victim account"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 81,
+        "description": "jwt.sign called with targetUser claims without verifying password or session origin"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Attacker is completely unauthenticated and only requires knowledge of a user ID"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "External unauthenticated attacker targeting arbitrary user accounts",
+      "payloads": [
+        "{\"targetUserId\": \"<victim_user_id>\"}"
+      ],
+      "instructions": [
+        "Send HTTP POST /api/users/switch with JSON payload containing targetUserId",
+        "Inspect Set-Cookie header in response containing authenticated session token for victim"
+      ],
+      "observed_result": "Server returned 200 OK and valid JWT cookie impersonating victim"
+    },
+    "remediation": {
+      "strategy": "Eliminate the unauthenticated /api/users/switch endpoint and require standard credential-based authentication for all login sessions.",
+      "code_changes": [
+        {
+          "file_name": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+          "fixed_code": "Endpoint removed entirely. User switching redirects to standard /login with credentials."
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "critical",
+        "reason": "Trivially exploitable over network with zero authentication or brute force required"
+      },
+      "impact": {
+        "score": "critical",
+        "reason": "Complete account takeover and unauthorized access to all user code workspaces and data"
+      },
+      "overall_severity": "critical"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Directly confirmed from source inspection and execution flow"
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-002-USER-ENUMERATION-PROFILES",
+    "title": "Sensitive Information Disclosure and User Account Enumeration",
+    "description": "The GET /api/users/profiles route and the login page rendered list of all registered users including userIds and email addresses without authentication.",
+    "root_cause": "Desktop profile quick-switcher queried all database users and passed their credentials and IDs to unauthenticated clients.",
+    "intended_behavior": "User identifiers and email addresses must not be exposed to unauthenticated users or public endpoints.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 48,
+        "scope": "router.get('/api/users/profiles')",
+        "description": "Unauthenticated client requests list of all user profiles"
+      },
+      {
+        "kind": "propagation",
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 50,
+        "scope": "User.find({}, { userId: 1, username: 1, email: 1 })",
+        "description": "Queries all users in database and serializes identifiers and emails"
+      },
+      {
+        "kind": "sink",
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 52,
+        "scope": "res.json({ success: true, profiles })",
+        "description": "Returns full user list to unauthenticated requester"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+        "line": 50,
+        "description": "Unrestricted User.find query returns all user records to public caller"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Attacker is unauthenticated"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Unauthenticated reconnaissance agent scraping user directories",
+      "payloads": [
+        "GET /api/users/profiles"
+      ],
+      "instructions": [
+        "Send GET request to /api/users/profiles",
+        "Read JSON array containing all registered usernames, emails, and persistent userIds"
+      ],
+      "observed_result": "Received complete roster of registered user accounts and identifiers"
+    },
+    "remediation": {
+      "strategy": "Remove the public profile enumeration route and remove user enumeration from the login page view.",
+      "code_changes": [
+        {
+          "file_name": "src/Routes/authRoute/loginRoutes/loginRoute.js",
+          "fixed_code": "Route removed. Login page renders standard authentication form without user listing."
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Accessible via simple GET request with no parameters or headers needed"
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Exposes PII and user enumeration data facilitating spear phishing and account targeting"
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed via source code review and API definition"
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-003-UNAUTH-CODE-EXECUTION",
+    "title": "Unauthenticated Remote Code Execution Proxy and Resource Exhaustion",
+    "description": "The POST /runCode endpoint was completely unauthenticated, allowing anonymous internet users to submit arbitrary source code for execution via the server's backend Judge0 integration.",
+    "root_cause": "Missing authentication middleware on POST /runCode endpoint.",
+    "intended_behavior": "Only authenticated users with a valid JWT session should be permitted to execute code.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 79,
+        "scope": "router.post('/runCode')",
+        "description": "Anonymous client posts code payload to execution endpoint"
+      },
+      {
+        "kind": "propagation",
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 87,
+        "scope": "executeCode({ code, language_id, stdin })",
+        "description": "Passes arbitrary code directly to execution backend without verifying session"
+      },
+      {
+        "kind": "sink",
+        "file": "src/Config/codeExecution.config.js",
+        "line": 102,
+        "scope": "client.post('/submissions')",
+        "description": "Submits code to Judge0 using server RapidAPI credentials"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 79,
+        "description": "Missing authenticate middleware on router.post('/runCode')"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Attacker is unauthenticated"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Unauthenticated third party abusing code runner as free compute or bot proxy",
+      "payloads": [
+        "{\"code\": \"print('hello')\", \"language_id\": 71}"
+      ],
+      "instructions": [
+        "Send HTTP POST /runCode with code payload and no authentication headers or cookies"
+      ],
+      "observed_result": "Server processed request and returned execution output using server API quota"
+    },
+    "remediation": {
+      "strategy": "Apply requireApiAuth (authenticate) middleware to POST /runCode.",
+      "code_changes": [
+        {
+          "file_name": "src/Routes/editorRoutes/editorRoutes.js",
+          "fixed_code": "router.post('/runCode', authenticate, async (req, res) => { ... });"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Exposed endpoint with straightforward JSON contract"
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Exhausts paid RapidAPI quota, risks API key revocation, and exposes compute backend to abuse"
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by route inspection"
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-004-UNAUTH-AI-AGENT-EXHAUSTION",
+    "title": "Unauthenticated AI Assistant Resource Exhaustion via HTTP and WebSocket",
+    "description": "The POST /ask-ai endpoint and the Socket.IO connection handler accepted connections and AI inference requests without verifying user authentication, allowing anyone to exhaust LLM resources.",
+    "root_cause": "Missing authentication checks on /ask-ai route and missing io.use authentication middleware on Socket.IO server.",
+    "intended_behavior": "All AI inference interfaces must require valid user authentication before processing queries.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "index.js",
+        "line": 58,
+        "scope": "io.on('connection')",
+        "description": "Anonymous socket connection established without handshake authentication"
+      },
+      {
+        "kind": "propagation",
+        "file": "index.js",
+        "line": 59,
+        "scope": "socket.on('ask-ai')",
+        "description": "Socket listener triggers runTeacherAgent without verifying caller identity"
+      },
+      {
+        "kind": "sink",
+        "file": "src/Services/langchainAgent.service.js",
+        "line": 13,
+        "scope": "resolveOllamaEndpoint()",
+        "description": "Dispatches queries to local/cloud Ollama using server GPU and API keys"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 160,
+        "description": "router.post('/ask-ai') defined without authentication middleware"
+      },
+      {
+        "file": "index.js",
+        "line": 58,
+        "description": "Socket.IO connection handler lacked io.use authentication middleware"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Attacker is unauthenticated"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Unauthenticated attacker flooding AI agent requests",
+      "payloads": [
+        "socket.emit('ask-ai', { prompt: 'flood request' })"
+      ],
+      "instructions": [
+        "Connect WebSocket to /socket.io without cookie",
+        "Emit ask-ai event with arbitrary prompt payload"
+      ],
+      "observed_result": "Server invoked LangChain agent and streamed responses to unauthenticated socket"
+    },
+    "remediation": {
+      "strategy": "Enforce authenticate middleware on /ask-ai HTTP endpoint and io.use JWT cookie verification on Socket.IO.",
+      "code_changes": [
+        {
+          "file_name": "src/Routes/editorRoutes/editorRoutes.js",
+          "fixed_code": "router.post('/ask-ai', authenticate, async (req, res) => { ... });"
+        },
+        {
+          "file_name": "index.js",
+          "fixed_code": "io.use((socket, next) => { ... verify JWT cookie ... });"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Directly accessible via HTTP and WebSocket without credentials"
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Exhausts Ollama cloud API quotas and overloads server CPU/GPU resources"
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed across HTTP and WebSocket paths"
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-005-PREVIEW-SAME-ORIGIN-XSS",
+    "title": "Cross-Site Scripting via Unsandboxed Same-Origin HTML Preview",
+    "description": "The GET /preview/:id endpoint served user-generated HTML, CSS, and JavaScript directly under the application origin with a permissive CSP that permitted unsafe-inline and unsafe-eval without sandbox isolation.",
+    "root_cause": "HTML preview was rendered on same origin without CSP sandbox directive.",
+    "intended_behavior": "User-generated preview pages must be sandboxed into an opaque origin using CSP sandbox to isolate them from application cookies, storage, and APIs.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 212,
+        "scope": "router.post('/preview')",
+        "description": "User submits arbitrary HTML, CSS, and JS code"
+      },
+      {
+        "kind": "propagation",
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 244,
+        "scope": "previewStore.set(id, { html: document })",
+        "description": "Stores user HTML document for preview access"
+      },
+      {
+        "kind": "sink",
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 270,
+        "scope": "res.send(entry.html)",
+        "description": "Delivers untrusted HTML under main origin without sandbox isolation"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/Routes/editorRoutes/editorRoutes.js",
+        "line": 273,
+        "description": "CSP header omitted 'sandbox allow-scripts allow-forms' directive"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "user_interaction",
+        "description": "User opens HTML preview containing crafted script payload"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Attacker sharing a malicious project or workspace containing preview payload",
+      "payloads": [
+        "<script>fetch('/api/projects').then(r=>r.json()).then(console.log)<\/script>"
+      ],
+      "instructions": [
+        "Open project containing script accessing localStorage or authenticated origin APIs",
+        "Click HTML Preview"
+      ],
+      "observed_result": "Preview script executed in same origin context and could access same-origin endpoints"
+    },
+    "remediation": {
+      "strategy": "Add 'sandbox allow-scripts allow-forms' to Content-Security-Policy on /preview/:id to isolate preview in opaque origin.",
+      "code_changes": [
+        {
+          "file_name": "src/Routes/editorRoutes/editorRoutes.js",
+          "fixed_code": "res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-forms; default-src \\'none\\'; script-src \\'unsafe-inline\\'; style-src \\'unsafe-inline\\'; img-src data: https: blob:; font-src data: https:;');"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires user to trigger preview or preview malicious shared workspace"
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Potential theft of localStorage data or actions performed on behalf of authenticated user"
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by preview route response header analysis"
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-006-PATH-TRAVERSAL-UPLOAD-CLEANUP",
+    "title": "Sibling Directory Traversal in File Upload Deletion Utility",
+    "description": "In safeDeleteUpload, targetFilePath.startsWith(allowedDir) was evaluated where allowedDir did not terminate with a path separator, allowing potential matching of sibling directories sharing the same prefix.",
+    "root_cause": "Path prefix comparison omitted trailing path.sep delimiter.",
+    "intended_behavior": "Path containment checks must enforce that targetFilePath is strictly inside allowedDir with proper boundary separator.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/Utils/fileHelper.js",
+        "line": 28,
+        "scope": "safeDeleteUpload(subDir, fileUrl)",
+        "description": "File deletion helper called with fileUrl parameter"
+      },
+      {
+        "kind": "propagation",
+        "file": "src/Utils/fileHelper.js",
+        "line": 42,
+        "scope": "targetFilePath = path.resolve(publicDir, cleanRelativePath)",
+        "description": "Resolves target path against public uploads directory"
+      },
+      {
+        "kind": "sink",
+        "file": "src/Utils/fileHelper.js",
+        "line": 46,
+        "scope": "targetFilePath.startsWith(allowedDir)",
+        "description": "Evaluates prefix containment without trailing separator"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/Utils/fileHelper.js",
+        "line": 40,
+        "description": "allowedDir lacked trailing path.sep delimiter"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "data_state",
+        "description": "Manipulated database fileUrl pointing to sibling path"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Attacker manipulating fileUrl in document record",
+      "payloads": [
+        "/uploads/projects_backup/file.zip"
+      ],
+      "instructions": [
+        "Provide file URL targeting sibling directory with matching prefix",
+        "Call delete workspace endpoint"
+      ],
+      "observed_result": "Prefix check validated true because allowedDir prefix matched sibling directory name"
+    },
+    "remediation": {
+      "strategy": "Append path.sep to allowedDir in safeDeleteUpload to ensure strict folder boundary containment.",
+      "code_changes": [
+        {
+          "file_name": "src/Utils/fileHelper.js",
+          "fixed_code": "const allowedDir = path.resolve(publicDir, 'uploads', subDir) + path.sep;"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Requires manipulating fileUrl attribute in database record"
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Unintended deletion of files in sibling directories"
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by static analysis of path comparison"
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "SEC-007-TAB-RENDER-DOM-XSS",
+    "title": "DOM-Based Cross-Site Scripting via File Name Tab Rendering",
+    "description": "In editor.js, active tab markup was constructed by string-concatenating file.name directly into an innerHTML template without HTML entity escaping.",
+    "root_cause": "Direct interpolation of file.name into tabContainer.innerHTML string template.",
+    "intended_behavior": "All dynamic strings rendered into HTML templates must be properly entity-escaped or inserted using textContent.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/public/editor.js",
+        "line": 1057,
+        "scope": "openTabs.map(id => ...)",
+        "description": "Iterates open tab IDs and retrieves file item"
+      },
+      {
+        "kind": "propagation",
+        "file": "src/public/editor.js",
+        "line": 1061,
+        "scope": "title=\"${file.name}\"",
+        "description": "Directly interpolates unescaped file.name into attribute and span"
+      },
+      {
+        "kind": "sink",
+        "file": "src/public/editor.js",
+        "line": 1056,
+        "scope": "tabContainer.innerHTML =",
+        "description": "Assigns unescaped markup to DOM innerHTML"
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/public/editor.js",
+        "line": 1061,
+        "description": "file.name interpolated directly into HTML template assigned to innerHTML"
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "user_interaction",
+        "description": "User opens an imported folder or zip archive containing crafted file names with HTML special characters"
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Attacker providing a zip archive with crafted filename payload",
+      "payloads": [
+        "<img src=x onerror=alert(1)>.js"
+      ],
+      "instructions": [
+        "Create file named '<img src=x onerror=alert(1)>.js' in workspace",
+        "Open file into an editor tab"
+      ],
+      "observed_result": "Raw HTML tags rendered into tab bar instead of plain text"
+    },
+    "remediation": {
+      "strategy": "Apply escapeHtml helper to file.name and file.id before rendering into tab HTML template.",
+      "code_changes": [
+        {
+          "file_name": "src/public/editor.js",
+          "fixed_code": "const safeName = escapeHtml(file.name); const safeId = escapeHtml(file.id); ..."
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires user to import a folder or zip containing maliciously named files"
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Execution of script in user context upon opening malicious file tab"
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by DOM template inspection"
+    }
+  }
+]

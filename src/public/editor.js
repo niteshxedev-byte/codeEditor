@@ -15,6 +15,17 @@ let openTabs = window.openTabs = ['1'];
 let expandedFolders = new Set(['root']);
 let draggedItemId = null;
 
+// Utility: Safe HTML Escaping
+function escapeHtml(str) {
+  if (typeof str !== "string") return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // Utility: Generate Unique ID
 function generateId() {
   return Math.random().toString(36).substr(2, 9);
@@ -24,7 +35,7 @@ function generateId() {
 window.addEventListener("DOMContentLoaded", () => {
   if (typeof require !== "undefined") {
     require(["vs/editor/editor.main"], function () {
-      
+
       // Create models for initial files
       fileSystem.forEach(item => {
         if (item.type === 'file') {
@@ -113,6 +124,26 @@ window.addEventListener("DOMContentLoaded", () => {
       renderTree();
     });
   }
+
+  // Setup single file import listener (fallback for browsers without File System Access API)
+  const fileInput = document.getElementById("fileInput");
+  if (fileInput) {
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        const content = await file.text();
+        loadSingleFile(file.name, content, file.name);
+        if (window.ideDialog) {
+          window.ideDialog.toast(`Opened ${file.name}`, "info");
+        }
+      } catch (err) {
+        console.error("Failed to read file:", err);
+        if (window.ideDialog) window.ideDialog.toast("Failed to read selected file", "error");
+      }
+      fileInput.value = "";
+    });
+  }
 });
 
 async function loadSavedProjectFromUrl() {
@@ -149,14 +180,14 @@ async function loadSavedProjectFromUrl() {
     for (const relativePath of zipEntries) {
       const entry = zip.files[relativePath];
       const parts = relativePath.split('/').filter(Boolean);
-      
+
       if (entry.dir) {
         let currentPath = '';
         let parentPath = '';
         for (let i = 0; i < parts.length; i++) {
           currentPath = parts.slice(0, i + 1).join('/');
           parentPath = parts.slice(0, i).join('/');
-          
+
           if (!folderMap[currentPath]) {
             const folderId = generateId();
             folderMap[currentPath] = folderId;
@@ -201,7 +232,7 @@ async function loadSavedProjectFromUrl() {
       const parentId = folderMap[parentPath] || 'root';
       const content = await entry.async("string");
       const fileId = generateId();
-      
+
       fileSystem.push({
         id: fileId,
         type: 'file',
@@ -246,7 +277,7 @@ function renderTree() {
   const container = document.getElementById("file-tree-container");
   if (!container) return;
   container.innerHTML = "";
-  
+
   const rootItems = fileSystem.filter(item => item.parentId === 'root');
   rootItems.forEach(item => {
     container.appendChild(createTreeElement(item, 0));
@@ -260,7 +291,7 @@ function createTreeElement(item, depth) {
   div.className = `tree-file-item ${item.id === activeFileId ? 'active' : ''}`;
   div.style.paddingLeft = `${depth * 12 + 8}px`;
   div.style.position = 'relative';
-  
+
   // Drag and drop attributes
   div.draggable = true;
   div.ondragstart = (e) => {
@@ -305,7 +336,7 @@ function createTreeElement(item, depth) {
   const actions = document.createElement("div");
   actions.style.display = "none";
   actions.style.gap = "4px";
-  
+
   const delBtn = document.createElement("i");
   delBtn.className = "ri-delete-bin-line";
   delBtn.title = "Delete";
@@ -413,77 +444,506 @@ function getIconColor(filename) {
   return "#c4cceb";
 }
 
-// Tree Operations
-function addFile() {
-  const name = prompt("Enter file name (e.g. script.js):");
-  if (!name) return;
-  
-  // Decide parent: if a folder is active, put it there, else root
-  let parentId = 'root';
-  const activeItem = fileSystem.find(f => f.id === activeFileId);
-  if (activeItem && activeItem.type === 'folder') {
+// ── Native IDE Modal Dialog & Notification System ──
+const ideDialog = {
+  _dialogEl: null,
+  _titleEl: null,
+  _iconEl: null,
+  _subtitleEl: null,
+  _fieldsEl: null,
+  _errorEl: null,
+  _cancelBtn: null,
+  _submitBtn: null,
+  _formEl: null,
+  _resolvePromise: null,
+  _currentConfig: null,
+
+  _init() {
+    if (this._dialogEl) return;
+    this._dialogEl = document.getElementById("ide-modal-dialog");
+    this._titleEl = document.getElementById("ide-dialog-title");
+    this._iconEl = document.getElementById("ide-dialog-icon");
+    this._subtitleEl = document.getElementById("ide-dialog-subtitle");
+    this._fieldsEl = document.getElementById("ide-dialog-fields");
+    this._errorEl = document.getElementById("ide-dialog-error");
+    this._cancelBtn = document.getElementById("ide-dialog-cancel-btn");
+    this._submitBtn = document.getElementById("ide-dialog-submit-btn");
+    this._formEl = document.getElementById("ide-dialog-form");
+
+    if (!this._dialogEl) return;
+
+    // Prevent clicks inside the dialog card from bubbling to dialog backdrop
+    const card = this._dialogEl.querySelector(".ide-dialog-card");
+    if (card) {
+      card.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+    }
+
+    // Cancel button
+    if (this._cancelBtn) {
+      this._cancelBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.close(null);
+      };
+    }
+
+    // Close X button
+    const closeBtn = document.getElementById("ide-dialog-close-btn");
+    if (closeBtn) {
+      closeBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.close(null);
+      };
+    }
+
+    // Submit button explicit click handler
+    if (this._submitBtn) {
+      this._submitBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this._handleSubmit();
+      };
+    }
+
+    // Only close if user clicked directly on the dialog backdrop
+    this._dialogEl.addEventListener("click", (e) => {
+      if (e.target === this._dialogEl) {
+        this.close(null);
+      }
+    });
+
+    // Native dialog cancel event (Esc key)
+    this._dialogEl.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      this.close(null);
+    });
+
+    // Form submit event fallback
+    if (this._formEl) {
+      this._formEl.onsubmit = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this._handleSubmit();
+      };
+    }
+  },
+
+  close(result) {
+    if (this._dialogEl && this._dialogEl.open) {
+      this._dialogEl.close();
+    }
+    if (this._resolvePromise) {
+      const resolve = this._resolvePromise;
+      this._resolvePromise = null;
+      resolve(result);
+    }
+  },
+
+  showError(msg) {
+    if (this._errorEl) {
+      if (msg) {
+        this._errorEl.textContent = msg;
+        this._errorEl.classList.remove("pce-hidden");
+      } else {
+        this._errorEl.textContent = "";
+        this._errorEl.classList.add("pce-hidden");
+      }
+    }
+  },
+
+  _handleSubmit() {
+    if (!this._currentConfig) return;
+    const { fields, validate } = this._currentConfig;
+    const values = {};
+
+    for (const f of fields) {
+      const input = document.getElementById("ide-field-" + f.name);
+      if (input) {
+        values[f.name] = input.value.trim();
+        if (f.required && !values[f.name]) {
+          this.showError((f.label || f.name) + " is required.");
+          input.focus();
+          return;
+        }
+      }
+    }
+
+    if (validate) {
+      const err = validate(values);
+      if (err) {
+        this.showError(err);
+        return;
+      }
+    }
+
+    this.showError("");
+    this.close(values);
+  },
+
+  promptForm({
+    title,
+    icon = "ri-terminal-box-line",
+    subtitle = "",
+    fields = [],
+    submitText = "Confirm",
+    isDestructive = false,
+    validate,
+  }) {
+    this._init();
+    if (!this._dialogEl) return Promise.resolve(null);
+
+    // Clean up any stale promise before opening
+    if (this._resolvePromise) {
+      const oldResolve = this._resolvePromise;
+      this._resolvePromise = null;
+      oldResolve(null);
+    }
+
+    this._currentConfig = { fields, validate };
+    if (this._titleEl) this._titleEl.textContent = title;
+    if (this._iconEl) this._iconEl.className = icon;
+    if (this._subtitleEl) this._subtitleEl.textContent = subtitle;
+    this.showError("");
+
+    if (this._submitBtn) {
+      this._submitBtn.textContent = submitText;
+      this._submitBtn.className = isDestructive
+        ? "ide-btn ide-btn-danger"
+        : "ide-btn ide-btn-primary";
+      this._submitBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this._handleSubmit();
+      };
+    }
+
+    if (this._fieldsEl) {
+      this._fieldsEl.innerHTML = "";
+      fields.forEach((f) => {
+        const group = document.createElement("div");
+        group.className = "ide-form-group";
+
+        const label = document.createElement("label");
+        label.setAttribute("for", "ide-field-" + f.name);
+        label.textContent = f.label || f.name;
+        group.appendChild(label);
+
+        let input;
+        if (f.type === "textarea") {
+          input = document.createElement("textarea");
+          input.rows = 3;
+        } else {
+          input = document.createElement("input");
+          input.type = f.type || "text";
+        }
+        input.id = "ide-field-" + f.name;
+        input.name = f.name;
+        input.placeholder = f.placeholder || "";
+        input.value = f.defaultValue || "";
+        input.spellcheck = false;
+        input.autocomplete = "off";
+
+        input.addEventListener("input", () => this.showError(""));
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            this._handleSubmit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            this.close(null);
+          }
+        });
+
+        group.appendChild(input);
+        this._fieldsEl.appendChild(group);
+      });
+    }
+
+    return new Promise((resolve) => {
+      this._resolvePromise = resolve;
+      try {
+        if (!this._dialogEl.open) {
+          this._dialogEl.showModal();
+        }
+      } catch (err) {
+        console.warn("showModal warning:", err);
+      }
+
+      setTimeout(() => {
+        const firstField = this._fieldsEl?.querySelector("input, textarea");
+        if (firstField) {
+          firstField.focus();
+          if (firstField.value) {
+            firstField.select();
+          }
+        }
+      }, 50);
+    });
+  },
+
+  promptInput({
+    title,
+    icon,
+    subtitle = "",
+    label = "Name",
+    placeholder = "",
+    defaultValue = "",
+    submitText = "Create",
+    validate,
+  }) {
+    return this.promptForm({
+      title,
+      icon,
+      subtitle,
+      fields: [{ name: "value", label, placeholder, defaultValue, required: true }],
+      submitText,
+      validate: validate ? (vals) => validate(vals.value) : undefined,
+    }).then((res) => (res ? res.value : null));
+  },
+
+  confirm({
+    title = "Confirm Action",
+    icon = "ri-alert-line",
+    message = "Are you sure you want to proceed?",
+    submitText = "Confirm",
+    isDestructive = false,
+  }) {
+    this._init();
+    if (!this._dialogEl) return Promise.resolve(false);
+
+    this.close(null);
+
+    this._currentConfig = { fields: [] };
+    if (this._titleEl) this._titleEl.textContent = title;
+    if (this._iconEl) this._iconEl.className = icon;
+    if (this._subtitleEl) this._subtitleEl.textContent = message;
+    this.showError("");
+
+    if (this._submitBtn) {
+      this._submitBtn.textContent = submitText;
+      this._submitBtn.className = isDestructive
+        ? "ide-btn ide-btn-danger"
+        : "ide-btn ide-btn-primary";
+    }
+
+    if (this._fieldsEl) {
+      this._fieldsEl.innerHTML = "";
+    }
+
+    return new Promise((resolve) => {
+      this._resolvePromise = (res) => resolve(Boolean(res));
+      this._dialogEl.showModal();
+      setTimeout(() => {
+        if (this._submitBtn) this._submitBtn.focus();
+      }, 40);
+    });
+  },
+
+  toast(message, type = "info", duration = 3200) {
+    const container = document.getElementById("ide-toast-container");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = `ide-toast toast-${type}`;
+
+    const icon = document.createElement("i");
+    const icons = {
+      success: "ri-checkbox-circle-line",
+      error: "ri-error-warning-line",
+      warning: "ri-alert-line",
+      info: "ri-information-line",
+    };
+    icon.className = `ide-toast-icon ${icons[type] || icons.info}`;
+
+    const msg = document.createElement("span");
+    msg.className = "ide-toast-message";
+    msg.textContent = message;
+
+    toast.appendChild(icon);
+    toast.appendChild(msg);
+
+    const removeToast = () => {
+      toast.classList.add("fade-out");
+      setTimeout(() => {
+        if (toast.parentNode === container) {
+          container.removeChild(toast);
+        }
+      }, 250);
+    };
+
+    toast.onclick = removeToast;
+    container.appendChild(toast);
+
+    if (duration > 0) {
+      setTimeout(removeToast, duration);
+    }
+  },
+};
+
+window.ideDialog = ideDialog;
+
+// Tree Operations (Form Modal Driven)
+async function addFile() {
+  let parentId = "root";
+  let folderName = "root";
+  const activeItem = fileSystem.find((f) => f.id === activeFileId);
+  if (activeItem && activeItem.type === "folder") {
     parentId = activeItem.id;
+    folderName = activeItem.name;
     expandedFolders.add(parentId);
-  } else if (activeItem && activeItem.parentId !== 'root') {
+  } else if (activeItem && activeItem.parentId !== "root") {
     parentId = activeItem.parentId;
+    const parentFolder = fileSystem.find((f) => f.id === parentId);
+    folderName = parentFolder ? parentFolder.name : "root";
     expandedFolders.add(parentId);
   }
 
+  const name = await window.ideDialog.promptInput({
+    title: "New File",
+    icon: "ri-file-add-line",
+    subtitle:
+      folderName === "root"
+        ? "Create file in project workspace"
+        : `Target directory: /${folderName}`,
+    label: "File Name",
+    placeholder: "e.g. index.js, styles.css, app.py",
+    submitText: "Create File",
+    validate: (val) => {
+      const trimmed = (val || "").trim();
+      if (!trimmed) return "File name cannot be empty.";
+      if (/[\\/:*?"<>|]/.test(trimmed)) return 'File name cannot contain: \\ / : * ? " < > |';
+      const exists = fileSystem.some(
+        (f) => f.parentId === parentId && f.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (exists) return `An item named "${trimmed}" already exists in this folder.`;
+      return null;
+    },
+  });
+
+  if (!name) return;
+  const fileName = name.trim();
   const newId = generateId();
-  fileSystem.push({ id: newId, type: 'file', name, content: '', parentId });
-  models[newId] = monaco.editor.createModel('', getLanguageFromExtension(name));
+  fileSystem.push({ id: newId, type: "file", name: fileName, content: "", parentId });
+
+  const m = window.monaco || (typeof monaco !== "undefined" ? monaco : null);
+  if (m && m.editor) {
+    try {
+      models[newId] = m.editor.createModel("", getLanguageFromExtension(fileName));
+    } catch (err) {
+      console.warn("createModel warning:", err);
+    }
+  }
+
+  if (typeof window.setPanel === "function") {
+    window.setPanel("explorer", true);
+  }
+
   switchToFile(newId);
+  renderTree();
+  updateEditorTab();
+  window.ideDialog.toast(`Created file "${fileName}"`, "success");
 }
 
-function addFolder() {
-  const name = prompt("Enter folder name:");
-  if (!name) return;
-  
-  let parentId = 'root';
-  const activeItem = fileSystem.find(f => f.id === activeFileId);
-  if (activeItem && activeItem.type === 'folder') {
+async function addFolder() {
+  let parentId = "root";
+  let folderName = "root";
+  const activeItem = fileSystem.find((f) => f.id === activeFileId);
+  if (activeItem && activeItem.type === "folder") {
     parentId = activeItem.id;
+    folderName = activeItem.name;
     expandedFolders.add(parentId);
-  } else if (activeItem && activeItem.parentId !== 'root') {
+  } else if (activeItem && activeItem.parentId !== "root") {
     parentId = activeItem.parentId;
+    const parentFolder = fileSystem.find((f) => f.id === parentId);
+    folderName = parentFolder ? parentFolder.name : "root";
     expandedFolders.add(parentId);
   }
 
+  const name = await window.ideDialog.promptInput({
+    title: "New Folder",
+    icon: "ri-folder-add-line",
+    subtitle:
+      folderName === "root"
+        ? "Create folder in project workspace"
+        : `Target directory: /${folderName}`,
+    label: "Folder Name",
+    placeholder: "e.g. components, utils, styles",
+    submitText: "Create Folder",
+    validate: (val) => {
+      const trimmed = (val || "").trim();
+      if (!trimmed) return "Folder name cannot be empty.";
+      if (/[\\/:*?"<>|]/.test(trimmed)) return 'Folder name cannot contain: \\ / : * ? " < > |';
+      const exists = fileSystem.some(
+        (f) => f.parentId === parentId && f.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (exists) return `A folder named "${trimmed}" already exists in this location.`;
+      return null;
+    },
+  });
+
+  if (!name) return;
+  const newFolderName = name.trim();
   const newId = generateId();
-  fileSystem.push({ id: newId, type: 'folder', name, parentId });
+  fileSystem.push({ id: newId, type: "folder", name: newFolderName, parentId });
   expandedFolders.add(newId);
+
+  if (typeof window.setPanel === "function") {
+    window.setPanel("explorer", true);
+  }
+
   renderTree();
+  window.ideDialog.toast(`Created folder "${newFolderName}"`, "success");
 }
 
-function deleteItem(id) {
-  if (!confirm("Are you sure you want to delete this item?")) return;
-  
+async function deleteItem(id) {
+  const item = fileSystem.find((f) => f.id === id);
+  if (!item) return;
+
+  const ok = await window.ideDialog.confirm({
+    title: item.type === "folder" ? "Delete Folder" : "Delete File",
+    icon: "ri-delete-bin-line",
+    message: `Are you sure you want to permanently delete "${item.name}"${item.type === "folder" ? " and all enclosed files" : ""
+      }? This action cannot be undone.`,
+    submitText: "Delete",
+    isDestructive: true,
+  });
+
+  if (!ok) return;
+
   // Collect all ids to delete (including nested)
   const idsToDelete = new Set([id]);
   const collectChildren = (parentId) => {
-    fileSystem.filter(f => f.parentId === parentId).forEach(child => {
-      idsToDelete.add(child.id);
-      if (child.type === 'folder') collectChildren(child.id);
-    });
+    fileSystem
+      .filter((f) => f.parentId === parentId)
+      .forEach((child) => {
+        idsToDelete.add(child.id);
+        if (child.type === "folder") collectChildren(child.id);
+      });
   };
   collectChildren(id);
 
   // Clean up models and openTabs
-  idsToDelete.forEach(delId => {
-    openTabs = openTabs.filter(tid => tid !== delId);
+  idsToDelete.forEach((delId) => {
+    openTabs = openTabs.filter((tid) => tid !== delId);
     if (models[delId]) {
       models[delId].dispose();
       delete models[delId];
     }
   });
 
-  fileSystem = fileSystem.filter(f => !idsToDelete.has(f.id));
+  fileSystem = fileSystem.filter((f) => !idsToDelete.has(f.id));
 
   // Reset active file if deleted
   if (idsToDelete.has(activeFileId)) {
-    const fallback = openTabs.length > 0
-      ? fileSystem.find(f => f.id === openTabs[openTabs.length - 1] && f.type === 'file')
-      : fileSystem.find(f => f.type === 'file');
+    const fallback =
+      openTabs.length > 0
+        ? fileSystem.find((f) => f.id === openTabs[openTabs.length - 1] && f.type === "file")
+        : fileSystem.find((f) => f.type === "file");
 
     if (fallback) {
       activeFileId = window.activeFileId = fallback.id;
@@ -497,19 +957,46 @@ function deleteItem(id) {
   }
 
   renderTree();
+  updateEditorTab();
+  window.ideDialog.toast(`Deleted "${item.name}"`, "info");
 }
 
-function renameItem(id) {
-  const item = fileSystem.find(f => f.id === id);
+async function renameItem(id) {
+  const item = fileSystem.find((f) => f.id === id);
   if (!item) return;
-  const newName = prompt("Enter new name:", item.name);
-  if (newName && newName !== item.name) {
-    item.name = newName;
-    if (item.type === 'file' && models[id]) {
-      monaco.editor.setModelLanguage(models[id], getLanguageFromExtension(newName));
-    }
-    renderTree();
+
+  const newName = await window.ideDialog.promptInput({
+    title: item.type === "folder" ? "Rename Folder" : "Rename File",
+    icon: "ri-edit-line",
+    subtitle: `Rename current item "${item.name}"`,
+    label: "New Name",
+    defaultValue: item.name,
+    submitText: "Rename",
+    validate: (val) => {
+      const trimmed = (val || "").trim();
+      if (!trimmed) return "Name cannot be empty.";
+      if (/[\\/:*?"<>|]/.test(trimmed)) return 'Name cannot contain: \\ / : * ? " < > |';
+      const exists = fileSystem.some(
+        (f) =>
+          f.parentId === item.parentId &&
+          f.id !== id &&
+          f.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (exists) return `An item named "${trimmed}" already exists in this location.`;
+      return null;
+    },
+  });
+
+  if (!newName || newName.trim() === item.name) return;
+  const trimmedName = newName.trim();
+  item.name = trimmedName;
+  if (item.type === "file" && models[id]) {
+    monaco.editor.setModelLanguage(models[id], getLanguageFromExtension(trimmedName));
+    syncLanguageDropdown(trimmedName);
   }
+  renderTree();
+  updateEditorTab();
+  window.ideDialog.toast(`Renamed to "${trimmedName}"`, "info");
 }
 
 function moveItem(itemId, newParentId) {
@@ -569,11 +1056,13 @@ function updateEditorTab() {
     const file = fileSystem.find(f => f.id === id);
     if (!file) return '';
     const isActive = file.id === activeFileId;
+    const safeName = escapeHtml(file.name);
+    const safeId = escapeHtml(file.id);
     return `
-      <div class="editor-tab ${isActive ? 'active' : ''}" data-tab-id="${file.id}" title="${file.name}">
+      <div class="editor-tab ${isActive ? 'active' : ''}" data-tab-id="${safeId}" title="${safeName}">
         <i class="ri-file-code-line" style="color:${getIconColor(file.name)}; font-size:13px;"></i>
-        <span>${file.name}</span>
-        <i class="ri-close-line tab-close-icon" data-close-id="${file.id}" title="Close Tab"></i>
+        <span>${safeName}</span>
+        <i class="ri-close-line tab-close-icon" data-close-id="${safeId}" title="Close Tab"></i>
       </div>
     `;
   }).join('');
@@ -612,7 +1101,7 @@ function updateEditorTab() {
 function exportFolder() {
   if (typeof JSZip !== "undefined") {
     const zip = new JSZip();
-    
+
     const addToZip = (parentId, currentFolder) => {
       const items = fileSystem.filter(f => f.parentId === parentId);
       items.forEach(item => {
@@ -635,14 +1124,303 @@ function exportFolder() {
       a.click();
     });
   } else {
-    alert("JSZip library is still loading...");
+    if (window.ideDialog) {
+      window.ideDialog.toast("JSZip library is still loading...", "warning");
+    }
   }
 }
 
-// Ensure the HTML file input exists in your DOM
-function importFolder() {
+// Load directory entries from native OS folder picker or zip
+function loadDirectoryEntries(folderName, entries) {
+  if (!entries || !entries.length) return;
+
+  // Clear existing monaco models
+  Object.keys(models).forEach((id) => models[id] && models[id].dispose());
+  models = window.models = {};
+  fileSystem = window.fileSystem = [
+    { id: "root", type: "folder", name: folderName || "workspace", parentId: null },
+  ];
+
+  const folderMap = { "": "root" };
+  let firstFileId = null;
+
+  // Pass 1: Build folder hierarchy
+  for (const item of entries) {
+    if (item.type !== "folder") continue;
+    const parts = (item.relativePath || item.name).split(/[\/\\]/).filter(Boolean);
+    let currentPath = "";
+    let parentPath = "";
+    for (let i = 0; i < parts.length; i++) {
+      currentPath = parts.slice(0, i + 1).join("/");
+      parentPath = parts.slice(0, i).join("/");
+      if (!folderMap[currentPath]) {
+        const folderId = generateId();
+        folderMap[currentPath] = folderId;
+        const parentId = folderMap[parentPath] || "root";
+        fileSystem.push({ id: folderId, type: "folder", name: parts[i], parentId });
+        expandedFolders.add(folderId);
+      }
+    }
+  }
+
+  // Pass 2: Load files
+  for (const item of entries) {
+    if (item.type !== "file") continue;
+    const parts = (item.relativePath || item.name).split(/[\/\\]/).filter(Boolean);
+    const fileName = parts.pop();
+    const folderParts = parts;
+
+    let currentPath = "";
+    let parentPath = "";
+    for (let i = 0; i < folderParts.length; i++) {
+      currentPath = folderParts.slice(0, i + 1).join("/");
+      parentPath = folderParts.slice(0, i).join("/");
+      if (!folderMap[currentPath]) {
+        const folderId = generateId();
+        folderMap[currentPath] = folderId;
+        const parentId = folderMap[parentPath] || "root";
+        fileSystem.push({ id: folderId, type: "folder", name: folderParts[i], parentId });
+        expandedFolders.add(folderId);
+      }
+    }
+
+    const parentId = folderMap[folderParts.join("/")] || "root";
+    const fileId = generateId();
+    const content = typeof item.content === "string" ? item.content : "";
+
+    fileSystem.push({
+      id: fileId,
+      type: "file",
+      name: fileName,
+      content,
+      parentId,
+      fsPath: item.path || "",
+    });
+
+    models[fileId] = monaco.editor.createModel(content, getLanguageFromExtension(fileName));
+    if (!firstFileId) firstFileId = fileId;
+  }
+
+  if (firstFileId) {
+    activeFileId = window.activeFileId = firstFileId;
+    openTabs = window.openTabs = [firstFileId];
+    if (editor && models[firstFileId]) {
+      editor.setModel(models[firstFileId]);
+      syncLanguageDropdown(fileSystem.find((f) => f.id === firstFileId)?.name);
+    }
+  }
+
+  const badge = document.querySelector(".workspace-badge");
+  if (badge && folderName) {
+    badge.textContent = folderName;
+  }
+
+  renderTree();
+  updateEditorTab();
+}
+
+// Load a single file into the active workspace
+function loadSingleFile(fileName, content, filePath, fileHandle = null) {
+  const existing = fileSystem.find((f) => f.name === fileName && f.type === "file");
+  if (existing) {
+    if (models[existing.id]) {
+      models[existing.id].setValue(content || "");
+    }
+    existing.content = content || "";
+    existing.fsPath = filePath || "";
+    if (fileHandle) existing.fileHandle = fileHandle;
+    switchToFile(existing.id);
+  } else {
+    const fileId = generateId();
+    fileSystem.push({
+      id: fileId,
+      type: "file",
+      name: fileName,
+      content: content || "",
+      parentId: "root",
+      fsPath: filePath || "",
+      fileHandle: fileHandle || null,
+    });
+    models[fileId] = monaco.editor.createModel(content || "", getLanguageFromExtension(fileName));
+    switchToFile(fileId);
+  }
+}
+
+// Open folder: File System Access API with input fallback
+async function importFolder() {
+  if (window.showDirectoryPicker) {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      if (dirHandle) {
+        const entries = [];
+        async function readDir(handle, currentRel = "") {
+          for await (const entry of handle.values()) {
+            if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".gemini") {
+              continue;
+            }
+            const rel = currentRel ? `${currentRel}/${entry.name}` : entry.name;
+            if (entry.kind === "directory") {
+              entries.push({ name: entry.name, type: "folder", relativePath: rel });
+              await readDir(entry, rel);
+            } else if (entry.kind === "file") {
+              try {
+                const f = await entry.getFile();
+                let content = "";
+                if (f.size < 2 * 1024 * 1024) {
+                  content = await f.text();
+                }
+                entries.push({
+                  name: entry.name,
+                  type: "file",
+                  relativePath: rel,
+                  content,
+                  handle: entry,
+                });
+              } catch (_) { }
+            }
+          }
+        }
+        await readDir(dirHandle, "");
+        if (entries.length > 0) {
+          loadDirectoryEntries(dirHandle.name, entries);
+          if (window.ideDialog) {
+            window.ideDialog.toast(`Imported folder: ${dirHandle.name}`, "success");
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      if (err.name === "AbortError") return; // User cancelled
+      console.warn("showDirectoryPicker fallback:", err);
+    }
+  }
+
   const input = document.getElementById("folderInput");
   if (input) input.click();
+}
+
+// Open file: File System Access API with input fallback
+async function openFile() {
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [
+          {
+            description: "Code and Text Files",
+            accept: {
+              "text/*": [".js", ".ts", ".py", ".cpp", ".c", ".java", ".rs", ".go", ".html", ".css", ".json", ".md", ".txt", ".sql", ".sh"],
+            },
+          },
+        ],
+      });
+      if (handle) {
+        const file = await handle.getFile();
+        const content = await file.text();
+        loadSingleFile(file.name, content, file.name, handle);
+        if (window.ideDialog) {
+          window.ideDialog.toast(`Opened ${file.name}`, "info");
+        }
+        return;
+      }
+    } catch (err) {
+      if (err.name === "AbortError") return; // User cancelled
+      console.warn("showOpenFilePicker fallback:", err);
+    }
+  }
+
+  const fileInput = document.getElementById("fileInput");
+  if (fileInput) fileInput.click();
+}
+
+/**
+ * Saves the active file locally to the user's disk.
+ * Supports File System Access API (showSaveFilePicker / direct handle write)
+ * and falls back seamlessly to Blob download for universal browser support.
+ *
+ * @param {boolean} [saveAs=false] - Force Save As picker dialog
+ */
+async function saveLocalFile(saveAs = false) {
+  const currentItem = fileSystem.find((f) => f.id === activeFileId && f.type === "file");
+  const content = editor ? editor.getValue() : (currentItem ? currentItem.content : "");
+  const defaultName = currentItem ? currentItem.name : "script.js";
+
+  // If file already has a writable FileSystemFileHandle and not "save as", write directly
+  if (!saveAs && currentItem && currentItem.fileHandle && typeof currentItem.fileHandle.createWritable === "function") {
+    try {
+      const writable = await currentItem.fileHandle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      currentItem.content = content;
+      window.hasUnsavedChanges = false;
+      if (window.ideDialog) {
+        window.ideDialog.toast(`Saved "${currentItem.name}" to disk!`, "success");
+      }
+      return;
+    } catch (err) {
+      console.warn("Direct handle save failed, falling back to picker:", err);
+    }
+  }
+
+  // Modern File System Access API: showSaveFilePicker
+  if (window.showSaveFilePicker) {
+    try {
+      const ext = defaultName.includes(".") ? defaultName.split(".").pop() : "js";
+      const handle = await window.showSaveFilePicker({
+        suggestedName: defaultName,
+        types: [
+          {
+            description: "Code File",
+            accept: {
+              "text/plain": [`.${ext}`],
+            },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
+
+      if (currentItem) {
+        currentItem.fileHandle = handle;
+        currentItem.content = content;
+      }
+      window.hasUnsavedChanges = false;
+      if (window.ideDialog) {
+        window.ideDialog.toast(`Saved "${handle.name || defaultName}" to disk!`, "success");
+      }
+      return;
+    } catch (err) {
+      if (err.name === "AbortError") return; // User cancelled
+      console.warn("showSaveFilePicker fallback:", err);
+    }
+  }
+
+  // Universal Fallback: Download via Blob
+  try {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    if (currentItem) {
+      currentItem.content = content;
+    }
+    window.hasUnsavedChanges = false;
+    if (window.ideDialog) {
+      window.ideDialog.toast(`Downloaded "${defaultName}" to your device!`, "success");
+    }
+  } catch (err) {
+    console.error("Local save error:", err);
+    if (window.ideDialog) {
+      window.ideDialog.toast(`Failed to save file: ${err.message}`, "error");
+    }
+  }
 }
 
 // Global Agent Actions interface to programmatically manipulate files, folders, and code
@@ -738,4 +1516,44 @@ window.agentActions = {
     updateEditorTab();
   }
 };
+
+// Export editor core functions to global window
+window.addFile = addFile;
+window.addFolder = addFolder;
+window.deleteItem = deleteItem;
+window.renameItem = renameItem;
+window.moveItem = moveItem;
+window.switchToFile = switchToFile;
+window.exportFolder = exportFolder;
+window.importFolder = importFolder;
+window.openFile = openFile;
+window.saveLocalFile = saveLocalFile;
+window.loadDirectoryEntries = loadDirectoryEntries;
+window.loadSingleFile = loadSingleFile;
+
+// Clean Web Application Exit Handling
+(function initWebEditorActions() {
+  if (typeof window === "undefined") return;
+
+  const exitBtn = document.getElementById("btn-exit");
+  if (exitBtn) {
+    exitBtn.addEventListener("click", async (e) => {
+      if (window.hasUnsavedChanges) {
+        e.preventDefault();
+        e.stopPropagation();
+        const ok = await window.ideDialog.confirm({
+          title: "Unsaved Changes",
+          icon: "ri-logout-box-r-line",
+          message: "You have unsaved changes in your workspace. Do you want to exit without saving?",
+          submitText: "Exit Workspace",
+          isDestructive: true,
+        });
+        if (ok) {
+          window.hasUnsavedChanges = false;
+          window.location.href = "/DashboardCodeEditor";
+        }
+      }
+    });
+  }
+})();
 
