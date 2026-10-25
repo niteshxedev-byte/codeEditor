@@ -109,7 +109,17 @@ window.addEventListener("DOMContentLoaded", () => {
         }
 
         const parentId = folderMap[pathParts.join('/')] || 'root';
-        const content = await file.text();
+        const ext = fileName.split('.').pop().toLowerCase();
+        let content = '';
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) {
+          const reader = new FileReader();
+          content = await new Promise((r) => {
+            reader.onload = () => r(reader.result);
+            reader.readAsDataURL(file);
+          });
+        } else {
+          content = await file.text();
+        }
         const fileId = generateId();
 
         fileSystem.push({ id: fileId, type: 'file', name: fileName, content, parentId });
@@ -132,7 +142,17 @@ window.addEventListener("DOMContentLoaded", () => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       try {
-        const content = await file.text();
+        const ext = file.name.split('.').pop().toLowerCase();
+        let content = '';
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) {
+          const reader = new FileReader();
+          content = await new Promise((r) => {
+            reader.onload = () => r(reader.result);
+            reader.readAsDataURL(file);
+          });
+        } else {
+          content = await file.text();
+        }
         loadSingleFile(file.name, content, file.name);
         if (window.ideDialog) {
           window.ideDialog.toast(`Opened ${file.name}`, "info");
@@ -148,14 +168,28 @@ window.addEventListener("DOMContentLoaded", () => {
 
 async function loadSavedProjectFromUrl() {
   const params = new URLSearchParams(window.location.search);
+  const projectId = params.get("projectId") || params.get("id");
   const projectUrl = params.get("projectUrl");
   const projectName = params.get("name") || params.get("projectName");
 
-  if (!projectUrl) return;
+  // Securely resolve archive URL from authenticated API endpoint
+  const targetUrl = projectId ? `/api/projects/${encodeURIComponent(projectId)}/archive` : projectUrl;
+  if (!targetUrl) return;
+
+  window.currentProjectId = projectId || null;
+  window.currentProjectName = projectName || null;
+  window.currentProjectUrl = targetUrl;
 
   try {
-    const res = await fetch(projectUrl);
-    if (!res.ok) throw new Error("Failed to fetch project archive");
+    const res = await fetch(targetUrl);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        if (window.ideDialog) window.ideDialog.toast("Unauthorized: You do not have permission to access this workspace.", "error");
+        setTimeout(() => { window.location.href = "/DashboardCodeEditor"; }, 1500);
+        return;
+      }
+      throw new Error(`Failed to fetch project archive (${res.status})`);
+    }
 
     const arrayBuffer = await res.arrayBuffer();
     if (typeof JSZip === "undefined") {
@@ -1266,8 +1300,17 @@ async function importFolder() {
               try {
                 const f = await entry.getFile();
                 let content = "";
-                if (f.size < 2 * 1024 * 1024) {
-                  content = await f.text();
+                if (f.size < 5 * 1024 * 1024) {
+                  const ext = entry.name.split(".").pop().toLowerCase();
+                  if (["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"].includes(ext)) {
+                    const reader = new FileReader();
+                    content = await new Promise((r) => {
+                      reader.onload = () => r(reader.result);
+                      reader.readAsDataURL(f);
+                    });
+                  } else {
+                    content = await f.text();
+                  }
                 }
                 entries.push({
                   name: entry.name,
@@ -1307,16 +1350,27 @@ async function openFile() {
         multiple: false,
         types: [
           {
-            description: "Code and Text Files",
+            description: "Supported Files (Code, Web & Images)",
             accept: {
-              "text/*": [".js", ".ts", ".py", ".cpp", ".c", ".java", ".rs", ".go", ".html", ".css", ".json", ".md", ".txt", ".sql", ".sh"],
+              "text/*": [".js", ".ts", ".py", ".cpp", ".c", ".java", ".rs", ".go", ".html", ".css", ".json", ".md", ".txt", ".sql", ".sh", ".svg"],
+              "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".svg"],
             },
           },
         ],
       });
       if (handle) {
         const file = await handle.getFile();
-        const content = await file.text();
+        const ext = file.name.split(".").pop().toLowerCase();
+        let content = "";
+        if (["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"].includes(ext)) {
+          const reader = new FileReader();
+          content = await new Promise((r) => {
+            reader.onload = () => r(reader.result);
+            reader.readAsDataURL(file);
+          });
+        } else {
+          content = await file.text();
+        }
         loadSingleFile(file.name, content, file.name, handle);
         if (window.ideDialog) {
           window.ideDialog.toast(`Opened ${file.name}`, "info");

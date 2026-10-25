@@ -170,20 +170,20 @@
       return;
     }
 
-    // Save File / Workspace: Ctrl+S and Shift+Ctrl+S (Save As Local Disk)
+    // Save File / Workspace: Ctrl+S (Save) and Shift+Ctrl+S (Save As)
     if (code === "KeyS" || key === "s" || key === "S") {
       e.preventDefault();
       e.stopPropagation();
       if (e.shiftKey) {
-        if (typeof window.saveLocalFile === "function") {
-          window.saveLocalFile(true);
+        if (typeof window.saveWorkspaceToMongoDB === "function") {
+          window.saveWorkspaceToMongoDB(true);
         }
       } else {
         const currentItem = window.fileSystem && window.fileSystem.find((f) => f.id === window.activeFileId && f.type === "file");
         if (currentItem && currentItem.fileHandle && typeof window.saveLocalFile === "function") {
           window.saveLocalFile(false);
         } else if (typeof window.saveWorkspaceToMongoDB === "function") {
-          window.saveWorkspaceToMongoDB();
+          window.saveWorkspaceToMongoDB(false);
         }
       }
       return;
@@ -280,11 +280,13 @@
           if (currentItem && currentItem.fileHandle && typeof window.saveLocalFile === "function") {
             window.saveLocalFile(false);
           } else if (typeof window.saveWorkspaceToMongoDB === "function") {
-            window.saveWorkspaceToMongoDB();
+            window.saveWorkspaceToMongoDB(false);
           }
         });
         window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS, () => {
-          if (typeof window.saveLocalFile === "function") window.saveLocalFile(true);
+          if (typeof window.saveWorkspaceToMongoDB === "function") {
+            window.saveWorkspaceToMongoDB(true);
+          }
         });
         window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO, () => {
           if (typeof window.openFile === "function") window.openFile();
@@ -578,90 +580,156 @@
     refreshModels();
   });
 
-  async function saveWorkspaceToMongoDB() {
+  async function saveWorkspaceToMongoDB(saveAs = false) {
     if (!window.editor) {
       if (window.ideDialog) window.ideDialog.toast("Editor is not ready yet.", "warning");
       return;
     }
 
-    const formResult = await window.ideDialog.promptForm({
-      title: "Save Workspace to Database",
-      icon: "ri-cloud-upload-line",
-      subtitle: "Save your active project files, folders, and code to MongoDB.",
-      fields: [
-        {
-          name: "projectName",
-          label: "Workspace Name",
-          placeholder: "e.g. react-portfolio, node-api",
-          required: true,
-        },
-        {
-          name: "projectDesc",
-          label: "Description",
-          placeholder: "Brief description of this project workspace",
-        },
-      ],
-      submitText: "Save Workspace",
-      validate: (vals) => {
-        const trimmed = (vals.projectName || "").trim();
-        if (!trimmed) return "Workspace name is required.";
-        if (/[\\/:*?"<>|]/.test(trimmed)) return 'Name cannot contain: \\ / : * ? " < > |';
-        return null;
-      },
-    });
+    const fs = window.fileSystem || (typeof fileSystem !== "undefined" ? fileSystem : []);
+    const activeId = window.activeFileId || (typeof activeFileId !== "undefined" ? activeFileId : null);
 
-    if (!formResult || !formResult.projectName) return;
-    const projectName = formResult.projectName.trim();
-    const projectDesc = (formResult.projectDesc || "").trim();
+    // Synchronize active Monaco editor buffer to fileSystem item
+    if (window.editor && fs && activeId) {
+      const activeItem = fs.find((f) => f.id === activeId && f.type === "file");
+      if (activeItem) {
+        activeItem.content = window.editor.getValue();
+      }
+    }
 
-    if (terminal_screen) terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Saving workspace to MongoDB...</div>`;
+    let projectName = window.currentProjectName || "";
+    let projectDesc = "";
+    const isNewProject = !window.currentProjectId || saveAs;
+
+    // Prompt for workspace name if saving for the first time or performing Save As
+    if (isNewProject) {
+      const defaultName = projectName || (document.querySelector(".workspace-badge")?.textContent || "").replace(/^Personal Code Editor\s*[-–—:]\s*/i, "").trim() || "my-workspace";
+
+      const formResult = await window.ideDialog.promptForm({
+        title: saveAs ? "Save Workspace As" : "Save Workspace to Database",
+        icon: "ri-cloud-upload-line",
+        subtitle: "Save your active project files, folders, and code to MongoDB.",
+        fields: [
+          {
+            name: "projectName",
+            label: "Workspace Name",
+            placeholder: "e.g. react-portfolio, node-api",
+            defaultValue: defaultName,
+            required: true,
+          },
+          {
+            name: "projectDesc",
+            label: "Description",
+            placeholder: "Brief description of this project workspace",
+          },
+        ],
+        submitText: saveAs ? "Save As New Workspace" : "Save Workspace",
+        validate: (vals) => {
+          const trimmed = (vals.projectName || "").trim();
+          if (!trimmed) return "Workspace name is required.";
+          if (/[\\/:*?"<>|]/.test(trimmed)) return 'Name cannot contain: \\ / : * ? " < > |';
+          return null;
+        },
+      });
+
+      if (!formResult || !formResult.projectName) return;
+      projectName = formResult.projectName.trim();
+      projectDesc = (formResult.projectDesc || "").trim();
+    }
+
+    if (terminal_screen) {
+      terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Saving workspace "${escapeHtml(projectName)}" to MongoDB...</div>`;
+    }
+
+    if (typeof JSZip === "undefined") {
+      if (window.ideDialog) window.ideDialog.toast("JSZip library is still loading...", "warning");
+      return;
+    }
 
     const zip = new JSZip();
     const addToZip = (parentId, currentFolder) => {
-      const items = typeof fileSystem !== 'undefined' ? fileSystem.filter(f => f.parentId === parentId) : [];
-      items.forEach(item => {
-        if (item.type === 'folder') {
+      const items = fs.filter((f) => f.parentId === parentId);
+      items.forEach((item) => {
+        if (item.type === "folder") {
           const newFolder = currentFolder.folder(item.name);
           addToZip(item.id, newFolder);
         } else {
-          const content = (typeof models !== 'undefined' && models[item.id]) ? models[item.id].getValue() : item.content;
-          currentFolder.file(item.name, content);
+          let fileContent = "";
+          if (window.editor && item.id === (window.activeFileId || activeId)) {
+            fileContent = window.editor.getValue();
+          } else if (window.models && window.models[item.id]) {
+            fileContent = window.models[item.id].getValue();
+          } else {
+            fileContent = item.content || "";
+          }
+
+          // Preserve binary images properly
+          if (typeof fileContent === "string" && fileContent.startsWith("data:image/") && fileContent.includes(";base64,")) {
+            const base64Data = fileContent.split(",")[1];
+            currentFolder.file(item.name, base64Data, { base64: true });
+          } else {
+            currentFolder.file(item.name, fileContent);
+          }
         }
       });
     };
 
-    if (typeof fileSystem !== 'undefined') {
-      addToZip('root', zip);
+    if (fs && fs.length > 0) {
+      addToZip("root", zip);
     } else {
       const code = window.editor.getValue();
       zip.file("main.js", code);
     }
 
     try {
-      const content = await zip.generateAsync({ type: "blob" });
+      const zipBlob = await zip.generateAsync({ type: "blob" });
       const formData = new FormData();
+      if (!isNewProject && window.currentProjectId) {
+        formData.append("projectId", window.currentProjectId);
+      }
       formData.append("projectName", projectName);
       formData.append("projectDescription", projectDesc || "Code Editor Workspace");
       formData.append("projectProgrammingLanguage", selectedName);
-      formData.append("projectFile", content, projectName + ".zip");
+      formData.append("projectFile", zipBlob, projectName + ".zip");
 
       const res = await fetch("/save-project", {
         method: "POST",
-        body: formData
+        body: formData,
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.project) {
+        window.currentProjectId = data.project._id;
+        window.currentProjectName = data.project.projectName;
+        window.currentProjectUrl = `/api/projects/${data.project._id}/archive`;
         window.hasUnsavedChanges = false;
-        if (terminal_screen) terminal_screen.innerHTML += `<div class="terminal-line terminal-success">Workspace saved successfully! Check Dashboard.</div>`;
-        if (window.ideDialog) window.ideDialog.toast(`Workspace "${projectName}" saved to database!`, "success");
+
+        // Update URL query parameters seamlessly
+        const newUrl = `/editor?projectId=${data.project._id}&name=${encodeURIComponent(data.project.projectName)}`;
+        window.history.replaceState({ projectId: data.project._id }, document.title, newUrl);
+
+        // Update workspace name badge and document title
+        const badge = document.querySelector(".workspace-badge");
+        if (badge) badge.textContent = data.project.projectName;
+        document.title = `${data.project.projectName} — Personal Code Editor`;
+
+        if (terminal_screen) {
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-success">Workspace saved successfully! Check Dashboard.</div>`;
+        }
+        if (window.ideDialog) {
+          window.ideDialog.toast(`Workspace "${projectName}" saved to database!`, "success");
+        }
       } else {
         const errMsg = data.error || "Unknown error";
-        if (terminal_screen) terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error saving: ${escapeHtml(errMsg)}</div>`;
+        if (terminal_screen) {
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error saving: ${escapeHtml(errMsg)}</div>`;
+        }
         if (window.ideDialog) window.ideDialog.toast(`Failed to save: ${errMsg}`, "error");
       }
     } catch (err) {
-      if (terminal_screen) terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error: ${escapeHtml(err.message)}</div>`;
+      if (terminal_screen) {
+        terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error: ${escapeHtml(err.message)}</div>`;
+      }
       if (window.ideDialog) window.ideDialog.toast(`Error: ${err.message}`, "error");
     }
   }
@@ -672,9 +740,9 @@
       return;
     }
 
-    const activeItem = typeof fileSystem !== "undefined"
-      ? fileSystem.find((f) => f.id === activeFileId && f.type === "file")
-      : null;
+    const fs = window.fileSystem || (typeof fileSystem !== "undefined" ? fileSystem : []);
+    const activeId = window.activeFileId || (typeof activeFileId !== "undefined" ? activeFileId : null);
+    const activeItem = fs.find((f) => f.id === activeId && f.type === "file");
     const defaultPdfName = activeItem
       ? activeItem.name.replace(/\.[^/.]+$/, "")
       : "Document";
@@ -782,6 +850,28 @@
           window.ideDialog.toast("Nothing to preview — open an HTML, CSS, or JS file first.", "warning");
         }
         return;
+      }
+
+      // Resolve workspace images (SVG, Data URLs, local assets) in HTML and CSS
+      if (typeof fileSystem !== "undefined" && Array.isArray(fileSystem)) {
+        fileSystem.forEach((f) => {
+          if (f.type !== "file" || !f.name || !f.content) return;
+          const ext = f.name.split(".").pop().toLowerCase();
+          let dataUri = null;
+          if (ext === "svg" && (f.content.includes("<svg") || f.content.includes("<?xml"))) {
+            dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(f.content)}`;
+          } else if (typeof f.content === "string" && f.content.startsWith("data:image/")) {
+            dataUri = f.content;
+          }
+
+          if (dataUri) {
+            const escapedName = f.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const srcRegex = new RegExp(`(src=["'])(?:\\.\\/)?${escapedName}(["'])`, "gi");
+            html = html.replace(srcRegex, `$1${dataUri}$2`);
+            const urlRegex = new RegExp(`(url\\(["']?)(?:\\.\\/)?${escapedName}(["']?\\))`, "gi");
+            css = css.replace(urlRegex, `$1${dataUri}$2`);
+          }
+        });
       }
 
       const res = await fetch("/preview", {

@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import User from "../../Models/userModels/userModels.js";
 import Project from "../../Models/userModels/projectsModel.js/projectModel.js";
 import Pdf from "../../Models/userModels/pdfModels.js";
-import { resolveUserId, safeDeleteUpload } from "../../Utils/fileHelper.js";
+import { resolveUserId, safeDeleteUpload, safeDeleteUserStorage } from "../../Utils/fileHelper.js";
 
 /**
  * GET /DashboardCodeEditor
@@ -131,8 +131,8 @@ export const deleteProject = async (req, res) => {
             return res.status(403).json({ success: false, error: "Forbidden: You do not own this workspace" });
         }
 
-        // Clean up disk archive safely
-        await safeDeleteUpload("projects", project.projectUrl);
+        // Clean up disk archive safely from isolated user storage
+        await safeDeleteUserStorage(currentUserId, "code", project.storagePath || project.projectUrl);
 
         await Project.findByIdAndDelete(id);
 
@@ -225,8 +225,8 @@ export const deletePdf = async (req, res) => {
             return res.status(403).json({ success: false, error: "Forbidden: You do not own this document" });
         }
 
-        // Clean up disk PDF safely
-        await safeDeleteUpload("pdfs", pdf.pdfUrl);
+        // Clean up disk PDF safely from isolated user storage
+        await safeDeleteUserStorage(currentUserId, "files", pdf.storagePath || pdf.pdfUrl);
 
         await Pdf.findByIdAndDelete(id);
 

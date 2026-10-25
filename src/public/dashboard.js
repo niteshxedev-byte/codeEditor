@@ -187,10 +187,8 @@
                     if (nameEl) nameEl.textContent = data.project.projectName;
 
                     const openLink = card.querySelector(".project-open-link");
-                    if (openLink && openLink.dataset.url) {
-                        openLink.href = `/editor?projectUrl=${encodeURIComponent(
-                            openLink.dataset.url
-                        )}&name=${encodeURIComponent(data.project.projectName)}`;
+                    if (openLink) {
+                        openLink.href = `/editor?projectId=${id}&name=${encodeURIComponent(data.project.projectName)}`;
                     }
 
                     card.querySelectorAll(".btn-rename, .btn-delete").forEach((btn) => {

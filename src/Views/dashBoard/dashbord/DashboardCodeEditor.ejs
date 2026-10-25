@@ -808,8 +808,8 @@
                                         <%= new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short' ,
                                             day: 'numeric' }) %>
                                     </span>
-                                    <a href="/editor?projectUrl=<%= encodeURIComponent(project.projectUrl) %>&name=<%= encodeURIComponent(project.projectName) %>"
-                                        class="btn-card-action project-open-link" data-url="<%= project.projectUrl %>"
+                                    <a href="/editor?projectId=<%= project._id %>&name=<%= encodeURIComponent(project.projectName) %>"
+                                        class="btn-card-action project-open-link" data-id="<%= project._id %>"
                                         title="Open in Code Editor">
                                         <i class="ri-arrow-right-up-line"></i>
                                         <span>open</span>
@@ -870,7 +870,7 @@
                                 </div>
 
                                 <div class="card-actions">
-                                    <a href="<%= pdf.pdfUrl %>" target="_blank" rel="noopener noreferrer"
+                                    <a href="/api/pdfs/<%= pdf._id %>/file" target="_blank" rel="noopener noreferrer"
                                         class="btn-card-action" title="View PDF">
                                         <i class="ri-eye-line"></i>
                                         <span>view</span>

@@ -22,6 +22,9 @@ const projectSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    storagePath: {
+        type: String,
+    },
     createdAt: {
         type: Date,
         default: Date.now,

@@ -133,6 +133,13 @@ app.use(session({
     }
 }));
 
+// Strictly block any direct or unauthenticated access to legacy uploads path
+app.use('/uploads', (req, res) => {
+    return res.status(403).json({
+        error: "Forbidden: Direct unauthenticated file access is blocked. User files and code are strictly protected and isolated."
+    });
+});
+
 app.use(express.static(path.join(__dirname, 'src/public')));
 app.set('views', path.join(__dirname, 'src/Views'));
 app.set('view engine', 'ejs');
