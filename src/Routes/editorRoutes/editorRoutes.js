@@ -67,6 +67,18 @@ const upload = multer({
   }
 });
 
+const handleUploadSingle = (fieldName) => (req, res, next) => {
+  upload.single(fieldName)(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      }
+      return res.status(400).json({ error: err.message || "Upload failed" });
+    }
+    next();
+  });
+};
+
 // Render Editor Page (Protected - strictly verifies workspace ownership if projectId provided)
 router.get("/editor", requireAuth, async (req, res) => {
   const { projectId } = req.query;
@@ -88,7 +100,7 @@ router.get("/editor", requireAuth, async (req, res) => {
 });
 
 // Secure Workspace Archive Download (Owner Only)
-router.get("/api/projects/:id/archive", requireAuth, async (req, res) => {
+router.get("/api/projects/:id/archive", authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -189,7 +201,7 @@ router.post("/runCode", authenticate, async (req, res) => {
 });
 
 // Save Project Endpoint (Create new or Update existing workspace in isolated user storage)
-router.post("/save-project", authenticate, upload.single("projectFile"), async (req, res) => {
+router.post("/save-project", authenticate, handleUploadSingle("projectFile"), async (req, res) => {
   try {
     const { projectId, projectName, projectDescription, projectProgrammingLanguage } = req.body;
 
@@ -198,8 +210,8 @@ router.post("/save-project", authenticate, upload.single("projectFile"), async (
     }
 
     let project = null;
-    if (projectId && mongoose.Types.ObjectId.isValid(projectId)) {
-      project = await Project.findOne({ _id: projectId, userId: req.user.userId });
+    if (projectId && typeof projectId === "string" && projectId.trim() && projectId !== "null" && projectId !== "undefined" && mongoose.Types.ObjectId.isValid(projectId.trim())) {
+      project = await Project.findOne({ _id: projectId.trim(), userId: req.user.userId });
     }
 
     if (project) {
@@ -239,7 +251,7 @@ router.post("/save-project", authenticate, upload.single("projectFile"), async (
 });
 
 // Save PDF Endpoint (User-isolated storage)
-router.post("/save-pdf", authenticate, upload.single("pdfFile"), async (req, res) => {
+router.post("/save-pdf", authenticate, handleUploadSingle("pdfFile"), async (req, res) => {
   try {
     const { pdfName } = req.body;
 
@@ -395,7 +407,7 @@ ${scriptTag}
 }
 
 // Store a preview snippet — returns an opaque 32-hex-char id
-router.post("/preview", requireAuth, (req, res) => {
+router.post("/preview", authenticate, (req, res) => {
   const { html = "", css = "", js = "" } = req.body || {};
 
   if (typeof html !== "string" || typeof css !== "string" || typeof js !== "string") {

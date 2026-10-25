@@ -1,4 +1,4 @@
-// Enhanced Monaco Editor & File Explorer Logic
+// Enhanced Monaco Editor & File Explorer Logic with Local Storage Auto-Save
 
 let editor = window.editor = null;
 let models = window.models = {}; // Store monaco models by file id
@@ -15,63 +15,283 @@ let openTabs = window.openTabs = ['1'];
 let expandedFolders = new Set(['root']);
 let draggedItemId = null;
 
-// Utility: Safe HTML Escaping
-function escapeHtml(str) {
-  if (typeof str !== "string") return "";
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+// Project & Workspace Session State
+window.currentProjectId = null;
+window.currentProjectName = null;
+window.currentProjectUrl = null;
+
+const STORAGE_KEY = 'pce:workspace:current';
+let autoSaveTimer = null;
 
 // Utility: Generate Unique ID
 function generateId() {
   return Math.random().toString(36).substr(2, 9);
 }
 
-// Monaco Editor Initialization
-window.addEventListener("DOMContentLoaded", () => {
-  if (typeof require !== "undefined") {
-    require(["vs/editor/editor.main"], function () {
+// Status indicator updater
+function setSaveStatus(status, text) {
+  const pill = document.getElementById("save-status-pill");
+  if (!pill) return;
+  pill.className = "save-status-pill " + status;
+  if (status === "saving") {
+    pill.innerHTML = `<i class="ri-loader-4-line ide-spin"></i> <span>${text || "saving..."}</span>`;
+  } else if (status === "saved") {
+    pill.innerHTML = `<i class="ri-check-line"></i> <span>${text || "saved locally"}</span>`;
+  } else if (status === "synced") {
+    pill.innerHTML = `<i class="ri-cloud-check-line"></i> <span>${text || "saved to DB"}</span>`;
+  } else if (status === "offline") {
+    pill.innerHTML = `<i class="ri-hard-drive-line"></i> <span>${text || "offline"}</span>`;
+  }
+}
+window.setSaveStatus = setSaveStatus;
 
-      // Create models for initial files
+// Auto-Save Workspace state to LocalStorage
+function saveWorkspaceToLocalStorage() {
+  try {
+    if (!Array.isArray(fileSystem) || fileSystem.length === 0) return;
+
+    // Sync active editor content to memory model/filesystem item
+    if (editor && activeFileId && models[activeFileId]) {
+      const activeItem = fileSystem.find(f => f.id === activeFileId && f.type === 'file');
+      if (activeItem) {
+        activeItem.content = models[activeFileId].getValue();
+      }
+    }
+
+    const filesToStore = fileSystem.map(item => {
+      const entry = {
+        id: item.id,
+        type: item.type,
+        name: item.name,
+        parentId: item.parentId,
+      };
+      if (item.type === 'file') {
+        entry.content = (models[item.id] ? models[item.id].getValue() : (item.content || ""));
+      }
+      return entry;
+    });
+
+    const langSelect = document.getElementById("language");
+    const stdinEl = document.getElementById("terminal-stdin-input");
+
+    const payload = {
+      version: 1,
+      projectId: window.currentProjectId || null,
+      projectName: window.currentProjectName || null,
+      projectUrl: window.currentProjectUrl || null,
+      activeFileId: activeFileId,
+      openTabs: openTabs,
+      selectedLanguageId: langSelect ? langSelect.value : null,
+      stdin: stdinEl ? stdinEl.value : "",
+      fileSystem: filesToStore,
+      updatedAt: Date.now()
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    setSaveStatus("saved");
+  } catch (err) {
+    console.warn("Auto-save to localStorage failed:", err);
+  }
+}
+window.saveWorkspaceToLocalStorage = saveWorkspaceToLocalStorage;
+
+function triggerAutoSave(debounceMs = 350) {
+  setSaveStatus("saving");
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    saveWorkspaceToLocalStorage();
+  }, debounceMs);
+}
+window.triggerAutoSave = triggerAutoSave;
+
+// Restore workspace from LocalStorage
+function restoreWorkspaceFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.fileSystem) || data.fileSystem.length === 0) return false;
+
+    // Dispose old models
+    Object.keys(models).forEach(id => {
+      if (models[id]) models[id].dispose();
+    });
+    models = window.models = {};
+
+    fileSystem = window.fileSystem = data.fileSystem.map(item => ({
+      id: item.id,
+      type: item.type,
+      name: item.name,
+      parentId: item.parentId,
+      content: item.type === 'file' ? (item.content || "") : undefined
+    }));
+
+    // Ensure expandedFolders has root and all folders
+    expandedFolders = new Set(['root']);
+    fileSystem.filter(f => f.type === 'folder').forEach(f => expandedFolders.add(f.id));
+
+    const m = window.monaco || (typeof monaco !== "undefined" ? monaco : null);
+    if (m && m.editor) {
       fileSystem.forEach(item => {
         if (item.type === 'file') {
-          models[item.id] = monaco.editor.createModel(
-            item.content,
+          models[item.id] = m.editor.createModel(
+            item.content || "",
             getLanguageFromExtension(item.name)
           );
         }
       });
+    }
 
-      editor = monaco.editor.create(document.getElementById("editor"), {
-        model: models[activeFileId],
-        theme: "vs-dark",
-        automaticLayout: true,
-        fontSize: 15,
-        minimap: { enabled: true },
-        fontFamily: "'JetBrains Mono', monospace",
-      });
-      window.editor = editor;
+    openTabs = window.openTabs = Array.isArray(data.openTabs) && data.openTabs.length > 0
+      ? data.openTabs.filter(tid => fileSystem.some(f => f.id === tid && f.type === 'file'))
+      : [];
 
-      // Update file content in state when edited
+    const validActive = fileSystem.find(f => f.id === data.activeFileId && f.type === 'file');
+    if (validActive) {
+      activeFileId = window.activeFileId = validActive.id;
+      if (!openTabs.includes(validActive.id)) openTabs.push(validActive.id);
+    } else {
+      const firstFile = fileSystem.find(f => f.type === 'file');
+      if (firstFile) {
+        activeFileId = window.activeFileId = firstFile.id;
+        if (!openTabs.includes(firstFile.id)) openTabs.push(firstFile.id);
+      }
+    }
+
+    window.currentProjectId = data.projectId || null;
+    window.currentProjectName = data.projectName || null;
+    window.currentProjectUrl = data.projectUrl || null;
+
+    if (window.currentProjectName) {
+      const badge = document.querySelector(".workspace-badge");
+      if (badge) badge.textContent = window.currentProjectName;
+    }
+
+    if (data.stdin !== undefined) {
+      const stdinEl = document.getElementById("terminal-stdin-input");
+      if (stdinEl) stdinEl.value = data.stdin;
+    }
+
+    if (editor && activeFileId && models[activeFileId]) {
+      editor.setModel(models[activeFileId]);
+      const current = fileSystem.find(f => f.id === activeFileId);
+      if (current) syncLanguageDropdown(current.name);
+    }
+
+    renderTree();
+    updateEditorTab();
+    setSaveStatus("saved");
+    return true;
+  } catch (err) {
+    console.warn("Failed to restore workspace from localStorage:", err);
+    return false;
+  }
+}
+window.restoreWorkspaceFromLocalStorage = restoreWorkspaceFromLocalStorage;
+
+// Monaco Editor Initialization
+window.addEventListener("DOMContentLoaded", () => {
+  if (typeof require !== "undefined") {
+    require(["vs/editor/editor.main"], async function () {
+      const params = new URLSearchParams(window.location.search);
+      const projectUrl = params.get("projectUrl");
+
+      if (projectUrl) {
+        // Create initial models
+        fileSystem.forEach(item => {
+          if (item.type === 'file') {
+            models[item.id] = monaco.editor.createModel(
+              item.content,
+              getLanguageFromExtension(item.name)
+            );
+          }
+        });
+
+        editor = monaco.editor.create(document.getElementById("editor"), {
+          model: models[activeFileId],
+          theme: "vs-dark",
+          automaticLayout: true,
+          fontSize: 15,
+          minimap: { enabled: true },
+          fontFamily: "'JetBrains Mono', monospace",
+        });
+        window.editor = editor;
+
+        await loadSavedProjectFromUrl();
+      } else {
+        const restored = restoreWorkspaceFromLocalStorage();
+        if (!restored) {
+          fileSystem.forEach(item => {
+            if (item.type === 'file') {
+              models[item.id] = monaco.editor.createModel(
+                item.content,
+                getLanguageFromExtension(item.name)
+              );
+            }
+          });
+        }
+
+        editor = monaco.editor.create(document.getElementById("editor"), {
+          model: models[activeFileId] || null,
+          theme: "vs-dark",
+          automaticLayout: true,
+          fontSize: 15,
+          minimap: { enabled: true },
+          fontFamily: "'JetBrains Mono', monospace",
+        });
+        window.editor = editor;
+
+        if (!restored) {
+          saveWorkspaceToLocalStorage();
+        } else {
+          const current = fileSystem.find(f => f.id === activeFileId);
+          if (current) syncLanguageDropdown(current.name);
+        }
+      }
+
+      // Update file content in state and auto-save when edited
       editor.onDidChangeModelContent(() => {
         const item = fileSystem.find(f => f.id === activeFileId);
         if (item && models[activeFileId]) {
           item.content = models[activeFileId].getValue();
         }
         if (window.hasUnsavedChanges !== undefined) {
-          window.hasUnsavedChanges = true; // hook for editor.ejs
+          window.hasUnsavedChanges = true;
+        }
+        triggerAutoSave();
+      });
+
+      // Keyboard shortcut Ctrl+S / Cmd+S in Monaco Editor
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        if (typeof window.saveWorkspaceToMongoDB === "function") {
+          window.saveWorkspaceToMongoDB(false);
         }
       });
 
       renderTree();
-
-      // Check if opening a saved project URL
-      loadSavedProjectFromUrl();
+      updateEditorTab();
     });
+  }
+
+  // Global window keyboard shortcut Ctrl+S / Cmd+S
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      if (typeof window.saveWorkspaceToMongoDB === "function") {
+        window.saveWorkspaceToMongoDB(false);
+      }
+    }
+  });
+
+  // Auto-save on page unload
+  window.addEventListener("beforeunload", () => {
+    saveWorkspaceToLocalStorage();
+  });
+
+  // Auto-save STDIN input changes
+  const stdinInput = document.getElementById("terminal-stdin-input");
+  if (stdinInput) {
+    stdinInput.addEventListener("input", () => triggerAutoSave(500));
   }
 
   // Setup folder import listener
@@ -86,6 +306,12 @@ window.addEventListener("DOMContentLoaded", () => {
       fileSystem = window.fileSystem = [
         { id: 'root', type: 'folder', name: 'imported', parentId: null }
       ];
+
+      window.currentProjectId = null;
+      window.currentProjectName = "imported";
+      window.currentProjectUrl = null;
+      const badge = document.querySelector(".workspace-badge");
+      if (badge) badge.textContent = "imported";
 
       const folderMap = { '': 'root' };
       let firstFileId = null;
@@ -129,9 +355,14 @@ window.addEventListener("DOMContentLoaded", () => {
 
       if (firstFileId) {
         activeFileId = window.activeFileId = firstFileId;
+        openTabs = window.openTabs = [firstFileId];
         if (editor) editor.setModel(models[firstFileId]);
+        const firstFile = fileSystem.find(f => f.id === firstFileId);
+        if (firstFile) syncLanguageDropdown(firstFile.name);
+        updateEditorTab();
       }
       renderTree();
+      saveWorkspaceToLocalStorage();
     });
   }
 
@@ -207,6 +438,10 @@ async function loadSavedProjectFromUrl() {
       { id: 'root', type: 'folder', name: projectName || 'project', parentId: null }
     ];
 
+    window.currentProjectId = projectId || null;
+    window.currentProjectName = projectName || null;
+    window.currentProjectUrl = projectUrl || null;
+
     const folderMap = { '': 'root' };
     const zipEntries = Object.keys(zip.files).sort();
 
@@ -264,7 +499,16 @@ async function loadSavedProjectFromUrl() {
       }
 
       const parentId = folderMap[parentPath] || 'root';
-      const content = await entry.async("string");
+      const ext = fileName.split('.').pop().toLowerCase();
+      const isImage = ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"].includes(ext);
+      let content = "";
+      if (isImage) {
+        const base64 = await entry.async("base64");
+        const mime = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+        content = `data:${mime};base64,${base64}`;
+      } else {
+        content = await entry.async("string");
+      }
       const fileId = generateId();
 
       fileSystem.push({
@@ -281,7 +525,11 @@ async function loadSavedProjectFromUrl() {
 
     if (firstFileId) {
       activeFileId = window.activeFileId = firstFileId;
-      if (editor) editor.setModel(models[firstFileId]);
+      openTabs = window.openTabs = [firstFileId];
+      if (editor && models[firstFileId]) editor.setModel(models[firstFileId]);
+      const firstFile = fileSystem.find(f => f.id === firstFileId);
+      if (firstFile) syncLanguageDropdown(firstFile.name);
+      updateEditorTab();
     }
 
     if (projectName) {
@@ -290,6 +538,8 @@ async function loadSavedProjectFromUrl() {
     }
 
     renderTree();
+    saveWorkspaceToLocalStorage();
+    setSaveStatus("synced");
   } catch (err) {
     console.error("Error loading project archive:", err);
   }
@@ -461,6 +711,7 @@ function switchToFile(fileId) {
   }
   syncLanguageDropdown(file.name);
   renderTree();
+  triggerAutoSave(600);
 }
 
 function getIconColor(filename) {
@@ -880,6 +1131,7 @@ async function addFile() {
   switchToFile(newId);
   renderTree();
   updateEditorTab();
+  triggerAutoSave();
   window.ideDialog.toast(`Created file "${fileName}"`, "success");
 }
 
@@ -931,6 +1183,7 @@ async function addFolder() {
   }
 
   renderTree();
+  triggerAutoSave();
   window.ideDialog.toast(`Created folder "${newFolderName}"`, "success");
 }
 
@@ -992,6 +1245,7 @@ async function deleteItem(id) {
 
   renderTree();
   updateEditorTab();
+  triggerAutoSave();
   window.ideDialog.toast(`Deleted "${item.name}"`, "info");
 }
 
@@ -1030,6 +1284,7 @@ async function renameItem(id) {
   }
   renderTree();
   updateEditorTab();
+  triggerAutoSave();
   window.ideDialog.toast(`Renamed to "${trimmedName}"`, "info");
 }
 
@@ -1050,6 +1305,7 @@ function moveItem(itemId, newParentId) {
   item.parentId = newParentId;
   expandedFolders.add(newParentId);
   renderTree();
+  triggerAutoSave();
 }
 
 function updateEditorTab() {
@@ -1120,6 +1376,7 @@ function updateEditorTab() {
           }
         }
         renderTree();
+        triggerAutoSave();
         return;
       }
       const tabId = el.getAttribute('data-tab-id');
@@ -1251,10 +1508,11 @@ function loadDirectoryEntries(folderName, entries) {
 
   renderTree();
   updateEditorTab();
+  triggerAutoSave();
 }
 
 // Load a single file into the active workspace
-function loadSingleFile(fileName, content, filePath, fileHandle = null) {
+function loadSingleFile(fileName, content, filePath) {
   const existing = fileSystem.find((f) => f.name === fileName && f.type === "file");
   if (existing) {
     if (models[existing.id]) {
@@ -1262,7 +1520,6 @@ function loadSingleFile(fileName, content, filePath, fileHandle = null) {
     }
     existing.content = content || "";
     existing.fsPath = filePath || "";
-    if (fileHandle) existing.fileHandle = fileHandle;
     switchToFile(existing.id);
   } else {
     const fileId = generateId();
@@ -1273,11 +1530,11 @@ function loadSingleFile(fileName, content, filePath, fileHandle = null) {
       content: content || "",
       parentId: "root",
       fsPath: filePath || "",
-      fileHandle: fileHandle || null,
     });
     models[fileId] = monaco.editor.createModel(content || "", getLanguageFromExtension(fileName));
     switchToFile(fileId);
   }
+  triggerAutoSave();
 }
 
 // Open folder: File System Access API with input fallback
@@ -1337,7 +1594,6 @@ async function importFolder() {
       console.warn("showDirectoryPicker fallback:", err);
     }
   }
-
   const input = document.getElementById("folderInput");
   if (input) input.click();
 }
@@ -1382,99 +1638,8 @@ async function openFile() {
       console.warn("showOpenFilePicker fallback:", err);
     }
   }
-
   const fileInput = document.getElementById("fileInput");
   if (fileInput) fileInput.click();
-}
-
-/**
- * Saves the active file locally to the user's disk.
- * Supports File System Access API (showSaveFilePicker / direct handle write)
- * and falls back seamlessly to Blob download for universal browser support.
- *
- * @param {boolean} [saveAs=false] - Force Save As picker dialog
- */
-async function saveLocalFile(saveAs = false) {
-  const currentItem = fileSystem.find((f) => f.id === activeFileId && f.type === "file");
-  const content = editor ? editor.getValue() : (currentItem ? currentItem.content : "");
-  const defaultName = currentItem ? currentItem.name : "script.js";
-
-  // If file already has a writable FileSystemFileHandle and not "save as", write directly
-  if (!saveAs && currentItem && currentItem.fileHandle && typeof currentItem.fileHandle.createWritable === "function") {
-    try {
-      const writable = await currentItem.fileHandle.createWritable();
-      await writable.write(content);
-      await writable.close();
-      currentItem.content = content;
-      window.hasUnsavedChanges = false;
-      if (window.ideDialog) {
-        window.ideDialog.toast(`Saved "${currentItem.name}" to disk!`, "success");
-      }
-      return;
-    } catch (err) {
-      console.warn("Direct handle save failed, falling back to picker:", err);
-    }
-  }
-
-  // Modern File System Access API: showSaveFilePicker
-  if (window.showSaveFilePicker) {
-    try {
-      const ext = defaultName.includes(".") ? defaultName.split(".").pop() : "js";
-      const handle = await window.showSaveFilePicker({
-        suggestedName: defaultName,
-        types: [
-          {
-            description: "Code File",
-            accept: {
-              "text/plain": [`.${ext}`],
-            },
-          },
-        ],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(content);
-      await writable.close();
-
-      if (currentItem) {
-        currentItem.fileHandle = handle;
-        currentItem.content = content;
-      }
-      window.hasUnsavedChanges = false;
-      if (window.ideDialog) {
-        window.ideDialog.toast(`Saved "${handle.name || defaultName}" to disk!`, "success");
-      }
-      return;
-    } catch (err) {
-      if (err.name === "AbortError") return; // User cancelled
-      console.warn("showSaveFilePicker fallback:", err);
-    }
-  }
-
-  // Universal Fallback: Download via Blob
-  try {
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = defaultName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    if (currentItem) {
-      currentItem.content = content;
-    }
-    window.hasUnsavedChanges = false;
-    if (window.ideDialog) {
-      window.ideDialog.toast(`Downloaded "${defaultName}" to your device!`, "success");
-    }
-  } catch (err) {
-    console.error("Local save error:", err);
-    if (window.ideDialog) {
-      window.ideDialog.toast(`Failed to save file: ${err.message}`, "error");
-    }
-  }
 }
 
 // Global Agent Actions interface to programmatically manipulate files, folders, and code
@@ -1493,6 +1658,7 @@ window.agentActions = {
     }
     expandedFolders.add(folderId);
     renderTree();
+    triggerAutoSave();
     return folderId;
   },
 
@@ -1523,6 +1689,7 @@ window.agentActions = {
       syncLanguageDropdown(existing.name);
       renderTree();
       updateEditorTab();
+      triggerAutoSave();
       return existing.id;
     }
 
@@ -1538,6 +1705,7 @@ window.agentActions = {
     syncLanguageDropdown(filename);
     renderTree();
     updateEditorTab();
+    triggerAutoSave();
     return newId;
   },
 
@@ -1568,6 +1736,7 @@ window.agentActions = {
     }
     renderTree();
     updateEditorTab();
+    triggerAutoSave();
   }
 };
 
@@ -1581,33 +1750,141 @@ window.switchToFile = switchToFile;
 window.exportFolder = exportFolder;
 window.importFolder = importFolder;
 window.openFile = openFile;
-window.saveLocalFile = saveLocalFile;
 window.loadDirectoryEntries = loadDirectoryEntries;
 window.loadSingleFile = loadSingleFile;
 
-// Clean Web Application Exit Handling
-(function initWebEditorActions() {
+// Desktop Application Integration (Electron)
+(function initDesktopApp() {
   if (typeof window === "undefined") return;
 
-  const exitBtn = document.getElementById("btn-exit");
-  if (exitBtn) {
-    exitBtn.addEventListener("click", async (e) => {
-      if (window.hasUnsavedChanges) {
+  const isElectron = Boolean(window.electronAPI && window.electronAPI.isElectron);
+
+  if (isElectron) {
+    document.body.classList.add("desktop-app");
+
+    // Clean exit button behavior: prompt and close desktop window instead of web logout
+    const exitBtn = document.getElementById("btn-exit");
+    if (exitBtn) {
+      exitBtn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
         const ok = await window.ideDialog.confirm({
-          title: "Unsaved Changes",
+          title: "Close Application",
           icon: "ri-logout-box-r-line",
-          message: "You have unsaved changes in your workspace. Do you want to exit without saving?",
-          submitText: "Exit Workspace",
+          message: "Are you sure you want to close Personal Code Editor?",
+          submitText: "Exit App",
           isDestructive: true,
         });
         if (ok) {
           window.hasUnsavedChanges = false;
-          window.location.href = "/DashboardCodeEditor";
+          if (window.electronAPI && typeof window.electronAPI.quitApp === "function") {
+            window.electronAPI.quitApp();
+          } else {
+            window.location.href = "/logout";
+          }
         }
-      }
-    });
+      });
+    }
+
+    // Switch User button behavior
+    const switchUserBtn = document.getElementById("btn-switch-user");
+    if (switchUserBtn) {
+      switchUserBtn.addEventListener("click", async (e) => {
+        if (window.hasUnsavedChanges) {
+          e.preventDefault();
+          e.stopPropagation();
+          const ok = await window.ideDialog.confirm({
+            title: "Switch User Profile",
+            icon: "ri-user-shared-line",
+            message: "You have unsaved changes in your workspace. Do you want to discard them and switch user?",
+            submitText: "Discard & Switch",
+            isDestructive: true,
+          });
+          if (!ok) return;
+        }
+        window.hasUnsavedChanges = false;
+        window.location.href = "/DashboardCodeEditor?action=switch-user";
+      });
+    }
+
+    // Connect native application menu bar triggers to web editor actions
+    if (typeof window.electronAPI.onMenuAction === "function") {
+      window.electronAPI.onMenuAction(async (action, _payload) => {
+        switch (action) {
+          case "newFile":
+            addFile();
+            break;
+          case "newFolder":
+            addFolder();
+            break;
+          case "openFile":
+            openFile();
+            break;
+          case "openFolder":
+            importFolder();
+            break;
+          case "saveWorkspace":
+            if (typeof window.saveWorkspaceToMongoDB === "function") {
+              window.saveWorkspaceToMongoDB();
+            }
+            break;
+          case "saveLocalFile": {
+            const currentItem = fileSystem.find((f) => f.id === activeFileId && f.type === "file");
+            const content = editor ? editor.getValue() : (currentItem ? currentItem.content : "");
+            const defaultName = currentItem ? currentItem.name : "script.js";
+            if (typeof window.electronAPI.saveFileDialog === "function") {
+              await window.electronAPI.saveFileDialog(content, defaultName);
+            }
+            break;
+          }
+          case "exportPDF":
+            if (typeof window.exportToPDF === "function") {
+              window.exportToPDF();
+            }
+            break;
+          case "exportZIP":
+            exportFolder();
+            break;
+          case "formatCode":
+            if (typeof window.formatCode === "function") {
+              window.formatCode();
+            }
+            break;
+          case "runCode":
+            if (typeof window.runCode === "function") {
+              window.runCode();
+            }
+            break;
+          case "clearConsole":
+            if (typeof window.clearConsole === "function") {
+              window.clearConsole();
+            }
+            break;
+          case "openHtmlPreview":
+            if (typeof window.openHtmlPreview === "function") {
+              window.openHtmlPreview();
+            }
+            break;
+          case "toggleExplorer":
+            if (typeof window.togglePanel === "function") {
+              window.togglePanel("explorer");
+            }
+            break;
+          case "toggleTerminal":
+            if (typeof window.togglePanel === "function") {
+              window.togglePanel("terminal");
+            }
+            break;
+          case "toggleAssistant":
+            if (typeof window.togglePanel === "function") {
+              window.togglePanel("assistant");
+            }
+            break;
+          default:
+            console.log("Unhandled menu action:", action);
+        }
+      });
+    }
   }
 })();
 

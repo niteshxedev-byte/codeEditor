@@ -15,8 +15,8 @@
   const select = document.getElementById("language");
   const terminal_screen = document.getElementById("terminal-screen");
   const terminal_actions = document.querySelector("#COADING_LANGUAGE");
-  let selectedId = select && select.value ? Number(select.value) : 63;
-  let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "JavaScript (Node.js)";
+  let selectedId = select && select.value ? Number(select.value) : 54;
+  let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "C++ (G++ Cloud)";
 
   if (select && terminal_actions && select.selectedIndex >= 0 && select.options[select.selectedIndex].text) {
     terminal_actions.innerHTML = `<i class="ri-terminal-line"></i> ${select.options[select.selectedIndex].text.toUpperCase()}`;
@@ -24,20 +24,13 @@
 
   function getMonacoLanguage(judgeId) {
     const id = Number(judgeId);
+    if ([54, 76, 105, 52, 53].includes(id)) return "cpp";
+    if ([71, 70, 92, 100, 109, 113].includes(id)) return "python";
     if ([63, 93, 97, 102].includes(id)) return "javascript";
     if ([74, 94, 101].includes(id)) return "typescript";
-    if ([70, 71, 92, 100, 109, 113].includes(id)) return "python";
-    if ([104, 110, 75, 103, 48, 49, 50].includes(id)) return "c";
-    if ([76, 105, 52, 53, 54].includes(id)) return "cpp";
-    if ([51].includes(id)) return "csharp";
-    if ([91, 62, 96].includes(id)) return "java";
-    if ([68, 98].includes(id)) return "php";
-    if ([72].includes(id)) return "ruby";
-    if ([83].includes(id)) return "swift";
+    if ([50, 104, 110, 75, 103, 48, 49].includes(id)) return "c";
+    if ([62, 91, 96].includes(id)) return "java";
     if ([73, 108].includes(id)) return "rust";
-    if ([78, 111].includes(id)) return "kotlin";
-    if ([60, 95, 106, 107].includes(id)) return "go";
-    if ([82].includes(id)) return "sql";
     if ([46].includes(id)) return "shell";
     return "plaintext";
   }
@@ -69,6 +62,36 @@
       .replace(/'/g, "&#039;");
   }
 
+  function switchTerminalTab(tab) {
+    const tabOutput = document.getElementById("tab-terminal-output");
+    const tabStdin = document.getElementById("tab-terminal-stdin");
+    const tabProblems = document.getElementById("tab-terminal-problems");
+    const screen = document.getElementById("terminal-screen");
+    const stdinWrapper = document.getElementById("terminal-stdin-wrapper");
+    const stdinInput = document.getElementById("terminal-stdin-input");
+
+    if (tab === "stdin") {
+      tabOutput?.classList.remove("active");
+      tabProblems?.classList.remove("active");
+      tabStdin?.classList.add("active");
+      screen?.classList.add("pce-hidden");
+      stdinWrapper?.classList.remove("pce-hidden");
+      setTimeout(() => stdinInput?.focus(), 40);
+    } else if (tab === "problems") {
+      tabStdin?.classList.remove("active");
+      tabOutput?.classList.remove("active");
+      tabProblems?.classList.add("active");
+      stdinWrapper?.classList.add("pce-hidden");
+      screen?.classList.remove("pce-hidden");
+    } else {
+      tabStdin?.classList.remove("active");
+      tabProblems?.classList.remove("active");
+      tabOutput?.classList.add("active");
+      stdinWrapper?.classList.add("pce-hidden");
+      screen?.classList.remove("pce-hidden");
+    }
+  }
+
   async function runCode() {
     try {
       if (!window.editor) {
@@ -83,13 +106,30 @@
         return;
       }
 
-      if (terminal_screen) terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Running in Judge0 container...</div>`;
+      // Ensure bottom terminal panel is visible and active on output tab
+      setPanel("terminal", true);
+      switchTerminalTab("output");
+
+      const stdinInput = document.getElementById("terminal-stdin-input");
+      const stdin = stdinInput ? stdinInput.value : "";
+
+      if (terminal_screen) {
+        const langLabel = selectedName || "Code";
+        terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Compiling and executing in Cloud Container with ${escapeHtml(langLabel)}...</div>`;
+      }
 
       const res = await fetch("/runCode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language_id: selectedId.toString() }),
+        body: JSON.stringify({ code, language_id: selectedId.toString(), stdin }),
+        credentials: "include",
       });
+
+      if (res.status === 401 || res.status === 403) {
+        if (terminal_screen) terminal_screen.innerHTML = `<div class="terminal-line terminal-error">Authentication required. Please log in.</div>`;
+        if (window.ideDialog) window.ideDialog.toast("Session expired or unauthorized. Please log in.", "error");
+        return;
+      }
 
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
@@ -99,14 +139,32 @@
       }
 
       const data = await res.json();
-      const output = data.stdout || data.stderr || data.compile_output || data.message || "Executed with no output.";
-      const isError = Boolean(data.stderr || data.compile_output);
+      let outputHtml = "";
+
+      if (data.compile_output) {
+        outputHtml += `<div class="terminal-line terminal-error" style="white-space: pre-wrap; font-family:'JetBrains Mono',monospace;">${escapeHtml(data.compile_output.trim())}</div>`;
+      }
+      if (data.stdout) {
+        outputHtml += `<div class="terminal-line terminal-success" style="white-space: pre-wrap; font-family:'JetBrains Mono',monospace;">${escapeHtml(data.stdout.trimEnd())}</div>`;
+      }
+      if (data.stderr) {
+        outputHtml += `<div class="terminal-line terminal-error" style="white-space: pre-wrap; font-family:'JetBrains Mono',monospace;">${escapeHtml(data.stderr.trimEnd())}</div>`;
+      }
+      if (!outputHtml) {
+        outputHtml = `<div class="terminal-line terminal-dim">[Program executed locally with no output]</div>`;
+      }
+
+      const statusDesc = data.status || "Completed";
+      const duration = data.time !== undefined ? `${data.time}s` : "0.00s";
 
       if (terminal_screen) {
         terminal_screen.innerHTML = `
-          <div class="terminal-line ${isError ? "terminal-error" : "terminal-success"}">${escapeHtml(output)}</div>
-          <div class="terminal-line terminal-dim" style="margin-top:6px; font-size:11px;">[Status: ${data.status || "Completed"} | Time: ${data.time || 0}s | Memory: ${data.memory || 0} KB]</div>
+          ${outputHtml}
+          <div class="terminal-line terminal-dim" style="margin-top:8px; font-size:11px; border-top:1px solid rgba(255,255,255,0.08); padding-top:4px;">
+            [Status: ${escapeHtml(statusDesc)} | Time: ${escapeHtml(duration)}]
+          </div>
         `;
+        terminal_screen.scrollTop = terminal_screen.scrollHeight;
       }
     } catch (error) {
       if (terminal_screen) terminal_screen.innerHTML = `<div class="terminal-line terminal-error">${escapeHtml(error.message || error)}</div>`;
@@ -154,7 +212,6 @@
     const code = e.code;
     const key = e.key;
 
-    // Run Code: Ctrl+Enter
     if (key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -162,7 +219,6 @@
       return;
     }
 
-    // Format Code: Shift+Ctrl+F
     if (e.shiftKey && (code === "KeyF" || key === "F" || key === "f")) {
       e.preventDefault();
       e.stopPropagation();
@@ -212,7 +268,6 @@
       }
       return;
     }
-
     let panel = null;
     if (code === "KeyB" || key === "b" || key === "B") panel = "explorer";
     else if (code === "KeyM" || key === "m" || key === "M") panel = "assistant";
@@ -506,6 +561,7 @@
           const res = await fetch("/ask-ai", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "include",
             signal: controller.signal,
             body: JSON.stringify({
               prompt: msg,
@@ -517,6 +573,12 @@
             })
           });
           clearTimeout(httpTimeout);
+
+          if (res.status === 401 || res.status === 403) {
+            agentBubble.innerHTML = `<strong>Session Expired:</strong><p style="margin-top:4px; color:#ef4444;">Please log in to continue using AI assistant.</p>`;
+            if (window.ideDialog) window.ideDialog.toast("Authentication required. Please log in.", "error");
+            return;
+          }
 
           const data = await res.json();
           if (!res.ok) {
@@ -597,7 +659,7 @@
       }
     }
 
-    let projectName = window.currentProjectName || "";
+    let projectName = (window.currentProjectName || "").trim();
     let projectDesc = "";
     const isNewProject = !window.currentProjectId || saveAs;
 
@@ -627,7 +689,7 @@
         validate: (vals) => {
           const trimmed = (vals.projectName || "").trim();
           if (!trimmed) return "Workspace name is required.";
-          if (/[\\/:*?"<>|]/.test(trimmed)) return 'Name cannot contain: \\ / : * ? " < > |';
+          if (/[\\/:*?\"<>|]/.test(trimmed)) return "Name cannot contain: \\ / : * ? \" < > |";
           return null;
         },
       });
@@ -637,12 +699,13 @@
       projectDesc = (formResult.projectDesc || "").trim();
     }
 
+    if (window.setSaveStatus) window.setSaveStatus("saving", "saving to DB...");
     if (terminal_screen) {
-      terminal_screen.innerHTML = `<div class="terminal-line terminal-dim">> Saving workspace "${escapeHtml(projectName)}" to MongoDB...</div>`;
+      terminal_screen.innerHTML += `<div class="terminal-line terminal-dim">> Saving workspace "${escapeHtml(projectName)}" to MongoDB...</div>`;
     }
 
     if (typeof JSZip === "undefined") {
-      if (window.ideDialog) window.ideDialog.toast("JSZip library is still loading...", "warning");
+      if (window.ideDialog) window.ideDialog.toast("JSZip library is still loading, please retry in a moment.", "warning");
       return;
     }
 
@@ -659,6 +722,8 @@
             fileContent = window.editor.getValue();
           } else if (window.models && window.models[item.id]) {
             fileContent = window.models[item.id].getValue();
+          } else if (typeof models !== "undefined" && models[item.id]) {
+            fileContent = models[item.id].getValue();
           } else {
             fileContent = item.content || "";
           }
@@ -689,15 +754,30 @@
       }
       formData.append("projectName", projectName);
       formData.append("projectDescription", projectDesc || "Code Editor Workspace");
-      formData.append("projectProgrammingLanguage", selectedName);
+      formData.append("projectProgrammingLanguage", typeof selectedName !== "undefined" ? selectedName : "Various");
       formData.append("projectFile", zipBlob, projectName + ".zip");
 
       const res = await fetch("/save-project", {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
-      const data = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        if (typeof window.setSaveStatus === "function") window.setSaveStatus("saved", "saved locally (login required)");
+        if (terminal_screen) terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Authentication required. Please log in to sync workspace.</div>`;
+        if (window.ideDialog) window.ideDialog.toast("Authentication required. Please log in to sync workspace.", "error");
+        setTimeout(() => { window.location.href = "/login"; }, 1500);
+        return;
+      }
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = { error: `Server response error (${res.status})` };
+      }
+
       if (data.success && data.project) {
         window.currentProjectId = data.project._id;
         window.currentProjectName = data.project.projectName;
@@ -713,20 +793,30 @@
         if (badge) badge.textContent = data.project.projectName;
         document.title = `${data.project.projectName} — Personal Code Editor`;
 
+        if (typeof window.saveWorkspaceToLocalStorage === "function") {
+          window.saveWorkspaceToLocalStorage();
+        }
+        if (typeof window.setSaveStatus === "function") {
+          window.setSaveStatus("synced");
+        }
+
+        const actionText = data.updated ? "updated in" : "saved to";
         if (terminal_screen) {
-          terminal_screen.innerHTML += `<div class="terminal-line terminal-success">Workspace saved successfully! Check Dashboard.</div>`;
+          terminal_screen.innerHTML += `<div class="terminal-line terminal-success">✓ Workspace "${escapeHtml(data.project.projectName)}" ${actionText} MongoDB!</div>`;
         }
         if (window.ideDialog) {
-          window.ideDialog.toast(`Workspace "${projectName}" saved to database!`, "success");
+          window.ideDialog.toast(`Workspace "${data.project.projectName}" ${actionText} database!`, "success");
         }
       } else {
         const errMsg = data.error || "Unknown error";
+        if (typeof window.setSaveStatus === "function") window.setSaveStatus("saved", "saved locally (DB sync error)");
         if (terminal_screen) {
           terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error saving: ${escapeHtml(errMsg)}</div>`;
         }
         if (window.ideDialog) window.ideDialog.toast(`Failed to save: ${errMsg}`, "error");
       }
     } catch (err) {
+      if (typeof window.setSaveStatus === "function") window.setSaveStatus("saved", "saved locally");
       if (terminal_screen) {
         terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Error: ${escapeHtml(err.message)}</div>`;
       }
@@ -786,10 +876,24 @@
 
       const res = await fetch("/save-pdf", {
         method: "POST",
-        body: formData
+        body: formData,
+        credentials: "include",
       });
 
-      const data = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        if (terminal_screen) terminal_screen.innerHTML += `<div class="terminal-line terminal-error">Authentication required. Please log in.</div>`;
+        if (window.ideDialog) window.ideDialog.toast("Authentication required. Please log in.", "error");
+        setTimeout(() => { window.location.href = "/login"; }, 1500);
+        return;
+      }
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = { error: `Server response error (${res.status})` };
+      }
+
       if (data.success) {
         if (terminal_screen) terminal_screen.innerHTML += `<div class="terminal-line terminal-success">PDF saved to Dashboard!</div>`;
         if (window.ideDialog) window.ideDialog.toast(`PDF "${pdfName}.pdf" generated and saved!`, "success");
@@ -816,6 +920,20 @@
           : null;
       }
 
+      function getFileContent(f) {
+        if (!f) return "";
+        if (window.editor && f.id === (window.activeFileId || (typeof activeFileId !== "undefined" ? activeFileId : null))) {
+          return window.editor.getValue();
+        }
+        if (window.models && window.models[f.id]) {
+          return window.models[f.id].getValue();
+        }
+        if (typeof models !== "undefined" && models[f.id]) {
+          return models[f.id].getValue();
+        }
+        return f.content || "";
+      }
+
       const activeFile = typeof fileSystem !== "undefined"
         ? fileSystem.find(f => f.id === activeFileId && f.type === "file")
         : null;
@@ -824,23 +942,23 @@
       let html = "", css = "", js = "";
 
       if (activeExt === "html" || activeExt === "htm") {
-        html = window.editor ? window.editor.getValue() : (activeFile?.content || "");
+        html = getFileContent(activeFile);
         const cssFile = findFile(".css");
         const jsFile = findFile(".js");
-        if (cssFile) css = cssFile.content || "";
-        if (jsFile) js = jsFile.content || "";
+        if (cssFile) css = getFileContent(cssFile);
+        if (jsFile) js = getFileContent(jsFile);
       } else if (activeExt === "css") {
-        css = window.editor ? window.editor.getValue() : (activeFile?.content || "");
+        css = getFileContent(activeFile);
         const htmlFile = findFile(".html") || findFile(".htm");
         const jsFile = findFile(".js");
-        if (htmlFile) html = htmlFile.content || "";
-        if (jsFile) js = jsFile.content || "";
+        if (htmlFile) html = getFileContent(htmlFile);
+        if (jsFile) js = getFileContent(jsFile);
       } else if (activeExt === "js") {
-        js = window.editor ? window.editor.getValue() : (activeFile?.content || "");
+        js = getFileContent(activeFile);
         const htmlFile = findFile(".html") || findFile(".htm");
         const cssFile = findFile(".css");
-        if (htmlFile) html = htmlFile.content || "";
-        if (cssFile) css = cssFile.content || "";
+        if (htmlFile) html = getFileContent(htmlFile);
+        if (cssFile) css = getFileContent(cssFile);
       } else {
         html = `<pre style="font-family:monospace;padding:1rem">${escapeHtml(window.editor ? window.editor.getValue() : "")}</pre>`;
       }
@@ -855,20 +973,22 @@
       // Resolve workspace images (SVG, Data URLs, local assets) in HTML and CSS
       if (typeof fileSystem !== "undefined" && Array.isArray(fileSystem)) {
         fileSystem.forEach((f) => {
-          if (f.type !== "file" || !f.name || !f.content) return;
+          if (f.type !== "file" || !f.name) return;
           const ext = f.name.split(".").pop().toLowerCase();
           let dataUri = null;
-          if (ext === "svg" && (f.content.includes("<svg") || f.content.includes("<?xml"))) {
-            dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(f.content)}`;
-          } else if (typeof f.content === "string" && f.content.startsWith("data:image/")) {
-            dataUri = f.content;
+          const rawContent = getFileContent(f);
+          if (!rawContent) return;
+          if (ext === "svg" && (rawContent.includes("<svg") || rawContent.includes("<?xml"))) {
+            dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rawContent)}`;
+          } else if (typeof rawContent === "string" && rawContent.startsWith("data:image/")) {
+            dataUri = rawContent;
           }
 
           if (dataUri) {
             const escapedName = f.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const srcRegex = new RegExp(`(src=["'])(?:\\.\\/)?${escapedName}(["'])`, "gi");
+            const srcRegex = new RegExp(`(src=["'])(?:\\.\\/)?(?:[^"']*\\/)?${escapedName}(["'])`, "gi");
             html = html.replace(srcRegex, `$1${dataUri}$2`);
-            const urlRegex = new RegExp(`(url\\(["']?)(?:\\.\\/)?${escapedName}(["']?\\))`, "gi");
+            const urlRegex = new RegExp(`(url\\(["']?)(?:\\.\\/)?(?:[^"']*\\/)?${escapedName}(["']?\\))`, "gi");
             css = css.replace(urlRegex, `$1${dataUri}$2`);
           }
         });
@@ -877,8 +997,15 @@
       const res = await fetch("/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ html, css, js }),
       });
+
+      if (res.status === 401 || res.status === 403) {
+        if (window.ideDialog) window.ideDialog.toast("Authentication required. Please log in.", "error");
+        setTimeout(() => { window.location.href = "/login"; }, 1500);
+        return;
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
