@@ -23,6 +23,11 @@ window.currentProjectUrl = null;
 const STORAGE_KEY = 'pce:workspace:current';
 let autoSaveTimer = null;
 
+function getStorageKey(projectId) {
+  const pId = projectId || window.currentProjectId || (new URLSearchParams(window.location.search).get("projectId")) || (new URLSearchParams(window.location.search).get("id"));
+  return pId ? `pce:workspace:${pId}` : STORAGE_KEY;
+}
+
 // Utility: Generate Unique ID
 function generateId() {
   return Math.random().toString(36).substr(2, 9);
@@ -87,7 +92,8 @@ function saveWorkspaceToLocalStorage() {
       updatedAt: Date.now()
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const key = getStorageKey(window.currentProjectId);
+    localStorage.setItem(key, JSON.stringify(payload));
     setSaveStatus("saved");
   } catch (err) {
     console.warn("Auto-save to localStorage failed:", err);
@@ -105,9 +111,10 @@ function triggerAutoSave(debounceMs = 350) {
 window.triggerAutoSave = triggerAutoSave;
 
 // Restore workspace from LocalStorage
-function restoreWorkspaceFromLocalStorage() {
+function restoreWorkspaceFromLocalStorage(targetId) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const key = getStorageKey(targetId);
+    const raw = localStorage.getItem(key);
     if (!raw) return false;
     const data = JSON.parse(raw);
     if (!data || !Array.isArray(data.fileSystem) || data.fileSystem.length === 0) return false;
@@ -194,10 +201,11 @@ window.addEventListener("DOMContentLoaded", () => {
   if (typeof require !== "undefined") {
     require(["vs/editor/editor.main"], async function () {
       const params = new URLSearchParams(window.location.search);
+      const projectId = params.get("projectId") || params.get("id");
       const projectUrl = params.get("projectUrl");
 
-      if (projectUrl) {
-        // Create initial models
+      if (projectId || projectUrl) {
+        // Create initial models placeholder
         fileSystem.forEach(item => {
           if (item.type === 'file') {
             models[item.id] = monaco.editor.createModel(
@@ -208,7 +216,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
 
         editor = monaco.editor.create(document.getElementById("editor"), {
-          model: models[activeFileId],
+          model: models[activeFileId] || null,
           theme: "vs-dark",
           automaticLayout: true,
           fontSize: 15,
@@ -217,6 +225,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
         window.editor = editor;
 
+        // Load project files and code belonging to this specific workspace from MongoDB
         await loadSavedProjectFromUrl();
       } else {
         const restored = restoreWorkspaceFromLocalStorage();
