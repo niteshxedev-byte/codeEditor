@@ -413,9 +413,14 @@
       try {
         if (typeof io !== "undefined") {
           if (!window.socket) {
-            window.socket = io();
+            window.socket = io({
+              transports: ["websocket", "polling"],
+              timeout: 6000,
+              reconnectionAttempts: 2,
+            });
           }
-          useSocket = !!window.socket;
+          // Only send via WebSocket if currently connected; otherwise use HTTP POST /ask-ai immediately
+          useSocket = !!(window.socket && window.socket.connected);
         }
       } catch (e) {
         console.warn("Socket init failed, falling back to HTTP:", e);

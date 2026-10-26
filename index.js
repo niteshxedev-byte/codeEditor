@@ -30,14 +30,37 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
         origin: (origin, callback) => {
-            if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-                callback(null, true);
-            } else {
-                callback(new Error("CORS not allowed"));
+            // Allow requests with no origin (e.g. mobile apps, curl, same-origin)
+            if (!origin) return callback(null, true);
+
+            // Allow localhost, loopback, and local network IPs (e.g. 192.168.x.x, 10.x.x.x, 172.x.x.x)
+            const localOrLanRegex = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|\[::1\])(:\d+)?$/;
+            if (localOrLanRegex.test(origin)) {
+                return callback(null, true);
             }
+
+            // Allow origins specified in environment variables
+            const envOrigins = (process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
+                .split(",")
+                .map((o) => o.trim())
+                .filter(Boolean);
+            if (envOrigins.length > 0 && (envOrigins.includes(origin) || envOrigins.includes("*"))) {
+                return callback(null, true);
+            }
+
+            // In production Linux server deployments, permit HTTP/HTTPS origins serving this app
+            try {
+                const parsed = new URL(origin);
+                if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+                    return callback(null, true);
+                }
+            } catch (_) {}
+
+            return callback(new Error("CORS not allowed"));
         },
         credentials: true
-    }
+    },
+    transports: ["websocket", "polling"], // Allow polling fallback if WebSockets are blocked by proxies
 });
 
 // Security headers
