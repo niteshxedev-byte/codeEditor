@@ -26,7 +26,7 @@ async function resolveOllamaEndpoint(modelName) {
         return { baseUrl: localUrl, headers: { "Content-Type": "application/json" } };
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return {
     baseUrl: cloudUrl,
@@ -70,7 +70,7 @@ export async function getAvailableModels() {
         }
       });
     }
-  } catch (_) {}
+  } catch (_) { }
 
   // Cloud Ollama
   const cloudUrl = (process.env.OLLAMA_URL || "https://ollama.com").replace(/\/$/, "");
@@ -90,17 +90,17 @@ export async function getAvailableModels() {
         }
       });
     }
-  } catch (_) {}
+  } catch (_) { }
 
   const result = models.length > 0
     ? models
     : [
-        { id: "llama3.2:1b", name: "llama3.2:1b (Local)", source: "local" },
-        { id: "qwen3.5:0.8b", name: "qwen3.5:0.8b (Local)", source: "local" },
-        { id: "gemma4:31b", name: "gemma4:31b (Cloud - Free)", source: "cloud" },
-        { id: "gpt-oss:20b", name: "gpt-oss:20b (Cloud - Free)", source: "cloud" },
-      ];
-      
+      { id: "llama3.2:1b", name: "llama3.2:1b (Local)", source: "local" },
+      { id: "qwen3.5:0.8b", name: "qwen3.5:0.8b (Local)", source: "local" },
+      { id: "gemma4:31b", name: "gemma4:31b (Cloud - Free)", source: "cloud" },
+      { id: "gpt-oss:20b", name: "gpt-oss:20b (Cloud - Free)", source: "cloud" },
+    ];
+
   cachedModels = result;
   lastModelFetch = Date.now();
   return result;
@@ -160,7 +160,7 @@ export async function runTeacherAgent({
     if (fs.existsSync(frontendSkillPath)) {
       frontendSkill = fs.readFileSync(frontendSkillPath, "utf8");
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // Build extra context (AGENTS.md memory + other skill files)
   let extraContext = "";
@@ -170,7 +170,7 @@ export async function runTeacherAgent({
     if (fs.existsSync(fullPath)) {
       extraContext += `\n\n--- MEMORY: ${memFile} ---\n${fs.readFileSync(fullPath, "utf8")}\n`;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   try {
     const skillDir = path.resolve("./skills/");
@@ -183,7 +183,7 @@ export async function runTeacherAgent({
         }
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // Tailored guidelines for web design requests
   const htmlDesignGuidelines = isHtmlTask ? `
@@ -218,7 +218,7 @@ ${activeCode || "// (empty buffer)"}
   if (baseUrl.includes("ollama.com") && (!headers || !headers.Authorization)) {
     throw new Error("OLLAMA_API_KEY is not configured on this server. Please add your OLLAMA_API_KEY to .env to use cloud models.");
   }
-  
+
   const llm = new ChatOllama({
     model: modelName,
     baseUrl: baseUrl,
@@ -336,7 +336,7 @@ Use ONCE before creating an HTML file to gather subject matter facts or resource
               return `Search results for "${q}":\n\n${parts.join("\n\n")}`;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
 
         // ── Strategy 2: Wikipedia REST summary (fast JSON, no parsing) ──────
         try {
@@ -352,7 +352,7 @@ Use ONCE before creating an HTML file to gather subject matter facts or resource
               return `**Wikipedia — ${data.title}:**\n${data.extract.slice(0, 600)}\nURL: ${data.content_urls?.desktop?.page || "https://en.wikipedia.org"}`;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
 
         return `No results found for "${q}". Use known CDN links directly (e.g. picsum.photos, cdnjs.cloudflare.com).`;
       }
@@ -371,15 +371,15 @@ Returns ready-to-paste <link> tags and CSS font-family values. Instant — no ne
 
         // Offline curated font catalogue — no network needed
         const catalogue = {
-          monospace:   ["JetBrains Mono", "Fira Code", "Source Code Pro", "Space Mono", "IBM Plex Mono"],
-          serif:       ["Playfair Display", "Lora", "Merriweather", "EB Garamond", "Libre Baskerville"],
-          sans:        ["Inter", "Space Grotesk", "DM Sans", "Outfit", "Plus Jakarta Sans"],
-          display:     ["Syne", "Unbounded", "Bebas Neue", "Righteous", "Orbitron"],
+          monospace: ["JetBrains Mono", "Fira Code", "Source Code Pro", "Space Mono", "IBM Plex Mono"],
+          serif: ["Playfair Display", "Lora", "Merriweather", "EB Garamond", "Libre Baskerville"],
+          sans: ["Inter", "Space Grotesk", "DM Sans", "Outfit", "Plus Jakarta Sans"],
+          display: ["Syne", "Unbounded", "Bebas Neue", "Righteous", "Orbitron"],
           handwriting: ["Caveat", "Dancing Script", "Pacifico", "Kalam", "Gloria Hallelujah"],
-          gaming:      ["Orbitron", "Exo 2", "Rajdhani", "Audiowide", "Press Start 2P"],
-          luxury:      ["Cormorant Garamond", "Bodoni Moda", "Marcellus", "Cinzel", "Italiana"],
-          tech:        ["Space Grotesk", "IBM Plex Sans", "Roboto Mono", "Share Tech Mono", "Oxanium"],
-          editorial:   ["DM Serif Display", "Fraunces", "Vollkorn", "Spectral", "Crimson Pro"],
+          gaming: ["Orbitron", "Exo 2", "Rajdhani", "Audiowide", "Press Start 2P"],
+          luxury: ["Cormorant Garamond", "Bodoni Moda", "Marcellus", "Cinzel", "Italiana"],
+          tech: ["Space Grotesk", "IBM Plex Sans", "Roboto Mono", "Share Tech Mono", "Oxanium"],
+          editorial: ["DM Serif Display", "Fraunces", "Vollkorn", "Spectral", "Crimson Pro"],
         };
 
         // Find best matching category
@@ -473,10 +473,10 @@ Returns ready-to-paste <link> tags and CSS font-family values. Instant — no ne
     const fallbackCode = isHtmlTask
       ? `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>${prompt.replace(/"/g, "")}</title>\n</head>\n<body>\n  <h1>${prompt.replace(/"/g, "")}</h1>\n</body>\n</html>\n`
       : isCpp
-      ? `// ${activeFileName}\n#include <iostream>\n\nint main() {\n    std::cout << "Lesson: ${prompt.replace(/"/g, "")}" << std::endl;\n    return 0;\n}\n`
-      : isPy
-      ? `# ${activeFileName}\nprint("Lesson: ${prompt.replace(/"/g, "")}")\n`
-      : `// ${activeFileName}\nconsole.log("Lesson: ${prompt.replace(/"/g, "")}");\n`;
+        ? `// ${activeFileName}\n#include <iostream>\n\nint main() {\n    std::cout << "Lesson: ${prompt.replace(/"/g, "")}" << std::endl;\n    return 0;\n}\n`
+        : isPy
+          ? `# ${activeFileName}\nprint("Lesson: ${prompt.replace(/"/g, "")}")\n`
+          : `// ${activeFileName}\nconsole.log("Lesson: ${prompt.replace(/"/g, "")}");\n`;
 
     return {
       response:
