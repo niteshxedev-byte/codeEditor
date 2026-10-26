@@ -436,13 +436,17 @@ async function loadSavedProjectFromUrl() {
             });
             models = window.models = {};
 
-            const hasRoot = prj.files.some(f => f.id === "root");
-            fileSystem = window.fileSystem = hasRoot
-              ? prj.files.map(f => ({ ...f }))
-              : [
-                  { id: "root", type: "folder", name: prj.projectName || "project", parentId: null },
-                  ...prj.files.map(f => ({ ...f, parentId: f.parentId || "root" }))
-                ];
+            fileSystem = window.fileSystem = prj.files.map(f => ({
+              id: f.id,
+              type: f.type,
+              name: f.name,
+              parentId: f.id === "root" ? null : (f.parentId || "root"),
+              content: f.type === "file" ? (f.content || "") : undefined
+            }));
+
+            if (!fileSystem.some(f => f.id === "root")) {
+              fileSystem.unshift({ id: "root", type: "folder", name: prj.projectName || "project", parentId: null });
+            }
 
             expandedFolders = new Set(["root"]);
             fileSystem.filter(f => f.type === "folder").forEach(f => expandedFolders.add(f.id));
@@ -468,6 +472,8 @@ async function loadSavedProjectFromUrl() {
             }
 
             renderTree();
+            saveWorkspaceToLocalStorage();
+            setSaveStatus("synced");
             return;
           }
         }

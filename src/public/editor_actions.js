@@ -758,22 +758,16 @@
 
     try {
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      const formData = new FormData();
-      if (!isNewProject && window.currentProjectId) {
-        formData.append("projectId", window.currentProjectId);
-      }
-      formData.append("projectName", projectName);
-      formData.append("projectDescription", projectDesc || "Code Editor Workspace");
-      formData.append("projectProgrammingLanguage", typeof selectedName !== "undefined" ? selectedName : "Various");
-      formData.append("projectFile", zipBlob, projectName + ".zip");
+      const liveFs = window.fileSystem || (typeof fileSystem !== "undefined" ? fileSystem : []);
+      const liveActiveId = window.activeFileId || (typeof activeFileId !== "undefined" ? activeFileId : null);
 
       // Extract all file and folder structures and live Monaco code to persist in MongoDB
-      const filesToSave = (fs && fs.length > 0 ? fs : [
+      const filesToSave = (liveFs && liveFs.length > 0 ? liveFs : [
         { id: "1", type: "file", name: "main.js", content: window.editor ? window.editor.getValue() : "", parentId: "root" }
       ]).map((item) => {
         let content = item.content || "";
         if (item.type === "file") {
-          if (window.editor && item.id === (window.activeFileId || activeId)) {
+          if (window.editor && item.id === (window.activeFileId || liveActiveId)) {
             content = window.editor.getValue();
           } else if (window.models && window.models[item.id]) {
             content = window.models[item.id].getValue();
@@ -791,9 +785,18 @@
       });
 
       const activeCode = window.editor ? window.editor.getValue() : "";
+
+      const formData = new FormData();
+      if (!isNewProject && window.currentProjectId) {
+        formData.append("projectId", window.currentProjectId);
+      }
+      formData.append("projectName", projectName);
+      formData.append("projectDescription", projectDesc || "Code Editor Workspace");
+      formData.append("projectProgrammingLanguage", typeof selectedName !== "undefined" ? selectedName : "Various");
       formData.append("files", JSON.stringify(filesToSave));
       formData.append("code", activeCode);
-      formData.append("activeFileId", window.activeFileId || activeId || "");
+      formData.append("activeFileId", window.activeFileId || liveActiveId || "");
+      formData.append("projectFile", zipBlob, projectName + ".zip");
 
       const res = await fetch("/save-project", {
         method: "POST",
