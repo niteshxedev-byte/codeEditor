@@ -25,6 +25,23 @@ const projectSchema = new mongoose.Schema({
     storagePath: {
         type: String,
     },
+    code: {
+        type: String,
+        default: "",
+    },
+    activeFileId: {
+        type: String,
+        default: null,
+    },
+    files: [
+        {
+            id: { type: String },
+            name: { type: String, required: true },
+            type: { type: String, enum: ["file", "folder"], default: "file" },
+            parentId: { type: String, default: "root" },
+            content: { type: String, default: "" },
+        }
+    ],
     createdAt: {
         type: Date,
         default: Date.now,

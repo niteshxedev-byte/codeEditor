@@ -403,7 +403,72 @@ async function loadSavedProjectFromUrl() {
   const projectUrl = params.get("projectUrl");
   const projectName = params.get("name") || params.get("projectName");
 
-  // Securely resolve archive URL from authenticated API endpoint
+  // Step 1: Try loading workspace files and code directly from MongoDB
+  if (projectId) {
+    try {
+      const metaRes = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+      if (metaRes.ok) {
+        const metaData = await metaRes.json();
+        if (metaData.success && metaData.project) {
+          const prj = metaData.project;
+          window.currentProjectId = prj._id;
+          window.currentProjectName = prj.projectName;
+          window.currentProjectUrl = prj.projectUrl;
+          if (prj.projectName) {
+            const badge = document.querySelector(".workspace-badge");
+            if (badge) badge.textContent = prj.projectName;
+            document.title = `${prj.projectName} — Personal Code Editor`;
+          }
+
+          if (Array.isArray(prj.files) && prj.files.length > 0) {
+            // Restore directly from MongoDB files collection
+            Object.keys(models).forEach(id => {
+              if (models[id]) models[id].dispose();
+            });
+            models = window.models = {};
+
+            const hasRoot = prj.files.some(f => f.id === "root");
+            fileSystem = window.fileSystem = hasRoot
+              ? prj.files.map(f => ({ ...f }))
+              : [
+                  { id: "root", type: "folder", name: prj.projectName || "project", parentId: null },
+                  ...prj.files.map(f => ({ ...f, parentId: f.parentId || "root" }))
+                ];
+
+            expandedFolders = new Set(["root"]);
+            fileSystem.filter(f => f.type === "folder").forEach(f => expandedFolders.add(f.id));
+
+            let firstFileId = null;
+            fileSystem.forEach(item => {
+              if (item.type === "file") {
+                models[item.id] = monaco.editor.createModel(item.content || "", getLanguageFromExtension(item.name));
+                if (!firstFileId) firstFileId = item.id;
+              }
+            });
+
+            const activeTargetId = (prj.activeFileId && models[prj.activeFileId]) ? prj.activeFileId : firstFileId;
+            if (activeTargetId) {
+              activeFileId = window.activeFileId = activeTargetId;
+              openTabs = window.openTabs = [activeTargetId];
+              if (editor && models[activeTargetId]) {
+                editor.setModel(models[activeTargetId]);
+              }
+              const activeF = fileSystem.find(f => f.id === activeTargetId);
+              if (activeF) syncLanguageDropdown(activeF.name);
+              updateEditorTab();
+            }
+
+            renderTree();
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load workspace directly from MongoDB, falling back to archive:", e.message);
+    }
+  }
+
+  // Step 2: Fallback to fetching archive from authenticated API endpoint
   const targetUrl = projectId ? `/api/projects/${encodeURIComponent(projectId)}/archive` : projectUrl;
   if (!targetUrl) return;
 
@@ -546,14 +611,32 @@ async function loadSavedProjectFromUrl() {
 }
 
 function getLanguageFromExtension(filename) {
-  const ext = filename.split('.').pop().toLowerCase();
+  if (!filename) return "plaintext";
+  const ext = filename.split(".").pop().toLowerCase();
   const map = {
-    'js': 'javascript', 'ts': 'typescript',
-    'py': 'python', 'html': 'html', 'css': 'css',
-    'json': 'json', 'md': 'markdown', 'c': 'c',
-    'cpp': 'cpp', 'java': 'java', 'go': 'go'
+    js: "javascript", mjs: "javascript", cjs: "javascript",
+    ts: "typescript",
+    py: "python",
+    html: "html", htm: "html",
+    css: "css", scss: "scss", less: "less",
+    json: "json",
+    md: "markdown",
+    c: "c",
+    cpp: "cpp", cc: "cpp", cxx: "cpp", hpp: "cpp", h: "cpp",
+    java: "java",
+    rs: "rust",
+    go: "go",
+    cs: "csharp",
+    php: "php",
+    rb: "ruby",
+    swift: "swift",
+    kt: "kotlin",
+    sql: "sql",
+    sh: "shell", bash: "shell",
+    xml: "xml", svg: "xml",
+    yaml: "yaml", yml: "yaml",
   };
-  return map[ext] || 'plaintext';
+  return map[ext] || "plaintext";
 }
 
 // Render File Tree
@@ -680,15 +763,23 @@ function syncLanguageDropdown(filename) {
   if (!select) return;
 
   const ext = filename.split('.').pop().toLowerCase();
+  // Sequential IDs (1-15) matching SUPPORTED_LANGUAGES and local compilers
   const extToLangId = {
-    'cpp': '54', 'hpp': '54', 'cc': '54', 'h': '54',
-    'c': '50',
-    'js': '63', 'mjs': '63', 'cjs': '63',
-    'ts': '74',
-    'py': '71',
-    'java': '62',
-    'rs': '73',
-    'go': '60'
+    'js': '1', 'mjs': '1', 'cjs': '1',
+    'ts': '2',
+    'py': '3',
+    'cpp': '4', 'hpp': '4', 'cc': '4', 'cxx': '4', 'h': '4',
+    'c': '5',
+    'java': '6',
+    'rs': '7',
+    'go': '8',
+    'cs': '9',
+    'php': '10',
+    'rb': '11',
+    'swift': '12',
+    'kt': '13', 'kts': '13',
+    'sql': '14',
+    'sh': '15', 'bash': '15',
   };
 
   const targetId = extToLangId[ext];

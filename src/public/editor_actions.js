@@ -767,6 +767,34 @@
       formData.append("projectProgrammingLanguage", typeof selectedName !== "undefined" ? selectedName : "Various");
       formData.append("projectFile", zipBlob, projectName + ".zip");
 
+      // Extract all file and folder structures and live Monaco code to persist in MongoDB
+      const filesToSave = (fs && fs.length > 0 ? fs : [
+        { id: "1", type: "file", name: "main.js", content: window.editor ? window.editor.getValue() : "", parentId: "root" }
+      ]).map((item) => {
+        let content = item.content || "";
+        if (item.type === "file") {
+          if (window.editor && item.id === (window.activeFileId || activeId)) {
+            content = window.editor.getValue();
+          } else if (window.models && window.models[item.id]) {
+            content = window.models[item.id].getValue();
+          } else if (typeof models !== "undefined" && models[item.id]) {
+            content = models[item.id].getValue();
+          }
+        }
+        return {
+          id: item.id,
+          name: item.name,
+          type: item.type,
+          parentId: item.parentId || "root",
+          content: item.type === "file" ? content : "",
+        };
+      });
+
+      const activeCode = window.editor ? window.editor.getValue() : "";
+      formData.append("files", JSON.stringify(filesToSave));
+      formData.append("code", activeCode);
+      formData.append("activeFileId", window.activeFileId || activeId || "");
+
       const res = await fetch("/save-project", {
         method: "POST",
         body: formData,

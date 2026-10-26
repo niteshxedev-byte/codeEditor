@@ -99,6 +99,30 @@ router.get("/editor", requireAuth, async (req, res) => {
   });
 });
 
+// Get Project Details and Code (Authenticated & Owner Only)
+router.get("/api/projects/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid project ID" });
+    }
+
+    const project = await Project.findOne({ _id: id, userId: req.user.userId });
+    if (!project) {
+      const exists = await Project.findById(id);
+      if (exists) {
+        return res.status(403).json({ error: "Forbidden: You do not have permission to access this workspace." });
+      }
+      return res.status(404).json({ error: "Workspace not found" });
+    }
+
+    return res.json({ success: true, project });
+  } catch (err) {
+    console.error("Error retrieving workspace details:", err);
+    return res.status(500).json({ error: "Failed to retrieve workspace details" });
+  }
+});
+
 // Secure Workspace Archive Download (Owner Only)
 router.get("/api/projects/:id/archive", authenticate, async (req, res) => {
   try {
@@ -200,13 +224,24 @@ router.post("/runCode", authenticate, async (req, res) => {
   }
 });
 
-// Save Project Endpoint (Create new or Update existing workspace in isolated user storage)
+// Save Project Endpoint (Create new or Update existing workspace in isolated user storage & MongoDB)
 router.post("/save-project", authenticate, handleUploadSingle("projectFile"), async (req, res) => {
   try {
-    const { projectId, projectName, projectDescription, projectProgrammingLanguage } = req.body;
+    const { projectId, projectName, projectDescription, projectProgrammingLanguage, files, code, activeFileId } = req.body;
 
-    if (!projectName || !req.file) {
-      return res.status(400).json({ error: "Project name and file are required" });
+    if (!projectName) {
+      return res.status(400).json({ error: "Project name is required" });
+    }
+
+    let parsedFiles = [];
+    if (files) {
+      try {
+        parsedFiles = typeof files === "string" ? JSON.parse(files) : files;
+        if (!Array.isArray(parsedFiles)) parsedFiles = [];
+      } catch (err) {
+        console.warn("Failed to parse project files payload:", err.message);
+        parsedFiles = [];
+      }
     }
 
     let project = null;
@@ -215,16 +250,19 @@ router.post("/save-project", authenticate, handleUploadSingle("projectFile"), as
     }
 
     if (project) {
-      // Clean up previous archive file from user's isolated storage
-      if (project.storagePath || project.projectUrl) {
+      // Clean up previous archive file from user's isolated storage if a new file was uploaded
+      if (req.file && (project.storagePath || project.projectUrl)) {
         await safeDeleteUserStorage(req.user.userId, "code", project.storagePath || project.projectUrl);
       }
 
       project.projectName = projectName;
       project.projectUrl = `/api/projects/${project._id}/archive`;
-      project.storagePath = req.file.path;
+      if (req.file) project.storagePath = req.file.path;
       if (projectDescription !== undefined) project.projectDescription = projectDescription || "Saved Workspace";
       if (projectProgrammingLanguage) project.projectProgrammingLanguage = projectProgrammingLanguage;
+      if (parsedFiles.length > 0) project.files = parsedFiles;
+      if (code !== undefined) project.code = code;
+      if (activeFileId) project.activeFileId = activeFileId;
 
       await project.save();
       return res.json({ success: true, project, updated: true });
@@ -234,9 +272,12 @@ router.post("/save-project", authenticate, handleUploadSingle("projectFile"), as
       userId: req.user.userId,
       projectName,
       projectUrl: "/api/projects/pending/archive",
-      storagePath: req.file.path,
+      storagePath: req.file ? req.file.path : "",
       projectDescription: projectDescription || "Saved Workspace",
       projectProgrammingLanguage: projectProgrammingLanguage || "Various",
+      files: parsedFiles,
+      code: code || (parsedFiles.find((f) => f.type === "file")?.content || ""),
+      activeFileId: activeFileId || null,
     });
 
     await project.save();
