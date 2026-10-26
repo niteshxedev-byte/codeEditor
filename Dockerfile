@@ -34,8 +34,11 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy application source code with non-root ownership
 COPY --chown=node:node . .
 
-# Ensure uploads directory exists and is owned by the node user
-RUN mkdir -p /app/src/public/uploads && chown -R node:node /app/src/public/uploads
+# Ensure runtime writable directories exist and are owned by the node user
+# - /app/storage     : per-user isolated code workspaces and PDF/file uploads
+# - /app/src/public/uploads : legacy uploads path (kept for backward compatibility)
+RUN mkdir -p /app/storage /app/src/public/uploads \
+    && chown -R node:node /app/storage /app/src/public/uploads
 
 # Switch to non-root user for security
 USER node

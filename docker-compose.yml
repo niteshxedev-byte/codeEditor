@@ -17,6 +17,7 @@ services:
       - LOCAL_OLLAMA_URL=http://ollama:11434
     volumes:
       - uploads_data:/app/src/public/uploads
+      - storage_data:/app/storage
     depends_on:
       ollama:
         condition: service_started
@@ -45,6 +46,8 @@ services:
 volumes:
   uploads_data:
     name: editor_uploads_data
+  storage_data:
+    name: editor_storage_data
   ollama_data:
     name: editor_ollama_data
 
