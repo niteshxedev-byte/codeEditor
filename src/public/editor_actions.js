@@ -15,24 +15,34 @@
   const select = document.getElementById("language");
   const terminal_screen = document.getElementById("terminal-screen");
   const terminal_actions = document.querySelector("#COADING_LANGUAGE");
-  let selectedId = select && select.value ? Number(select.value) : 54;
-  let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "C++ (G++ Cloud)";
+  let selectedId = select && select.value ? Number(select.value) : 1;
+  let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "JavaScript (Node.js)";
 
   if (select && terminal_actions && select.selectedIndex >= 0 && select.options[select.selectedIndex].text) {
     terminal_actions.innerHTML = `<i class="ri-terminal-line"></i> ${select.options[select.selectedIndex].text.toUpperCase()}`;
   }
 
-  function getMonacoLanguage(judgeId) {
-    const id = Number(judgeId);
-    if ([54, 76, 105, 52, 53].includes(id)) return "cpp";
-    if ([71, 70, 92, 100, 109, 113].includes(id)) return "python";
-    if ([63, 93, 97, 102].includes(id)) return "javascript";
-    if ([74, 94, 101].includes(id)) return "typescript";
-    if ([50, 104, 110, 75, 103, 48, 49].includes(id)) return "c";
-    if ([62, 91, 96].includes(id)) return "java";
-    if ([73, 108].includes(id)) return "rust";
-    if ([46].includes(id)) return "shell";
-    return "plaintext";
+  function getMonacoLanguage(langId) {
+    const id = Number(langId);
+    // Maps new sequential IDs (1-15) to Monaco language identifiers
+    const map = {
+      1: "javascript",  // JS
+      2: "typescript",  // TS
+      3: "python",      // Python
+      4: "cpp",         // C++
+      5: "c",           // C
+      6: "java",        // Java
+      7: "rust",        // Rust
+      8: "go",          // Go
+      9: "csharp",      // C#
+      10: "php",        // PHP
+      11: "ruby",       // Ruby
+      12: "swift",      // Swift
+      13: "kotlin",     // Kotlin
+      14: "sql",        // SQL
+      15: "shell",      // Bash
+    };
+    return map[id] ?? "plaintext";
   }
 
   if (select) {

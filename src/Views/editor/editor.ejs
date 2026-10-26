@@ -68,19 +68,23 @@
         <option value="">Select Language</option>
         <% if (typeof languages !=="undefined" && languages.length> 0) { %>
           <% languages.forEach(lang=> { %>
-            <option value="<%= lang.id %>" <%=lang.id===63 ? "selected" : "" %>>
+            <option value="<%= lang.id %>" <%=lang.id===1 ? "selected" : "" %>>
               <%= lang.name %>
             </option>
             <% }) %>
               <% } else { %>
-                <option value="63" selected>JavaScript (Node.js 12.14.0)</option>
-                <option value="74">TypeScript (3.7.4)</option>
-                <option value="71">Python (3.8.1)</option>
-                <option value="54">C++ (GCC 9.2.0)</option>
-                <option value="50">C (GCC 9.2.0)</option>
-                <option value="62">Java (OpenJDK 13.0.1)</option>
-                <option value="73">Rust (1.40.0)</option>
-                <option value="60">Go (1.13.5)</option>
+                <option value="1" selected>JavaScript (Node.js)</option>
+                <option value="2">TypeScript (ts-node)</option>
+                <option value="3">Python (python3)</option>
+                <option value="4">C++ (GCC, C++17)</option>
+                <option value="5">C (GCC)</option>
+                <option value="6">Java (OpenJDK)</option>
+                <option value="7">Rust (rustc)</option>
+                <option value="8">Go (go run)</option>
+                <option value="10">PHP (php)</option>
+                <option value="11">Ruby (ruby)</option>
+                <option value="14">SQL (SQLite)</option>
+                <option value="15">Bash</option>
                 <% } %>
       </select>
 
