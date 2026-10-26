@@ -290,6 +290,54 @@
     }
   }, true);
 
+  /* ── IDE Main Menu & Light Dismiss ── */
+  function toggleIdeMenu(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const menu = document.getElementById("ide-menu-dropdown");
+    const btn = document.getElementById("btn-ide-menu");
+    if (!menu) return;
+    const isOpen = menu.classList.contains("open");
+    if (isOpen) {
+      closeIdeMenu();
+    } else {
+      menu.classList.add("open");
+      btn?.setAttribute("aria-expanded", "true");
+    }
+  }
+
+  function closeIdeMenu() {
+    const menu = document.getElementById("ide-menu-dropdown");
+    const btn = document.getElementById("btn-ide-menu");
+    if (menu && menu.classList.contains("open")) {
+      menu.classList.remove("open");
+      btn?.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  // Close menu when clicking outside
+  document.addEventListener("click", (e) => {
+    const menu = document.getElementById("ide-menu-dropdown");
+    const btn = document.getElementById("btn-ide-menu");
+    if (menu && menu.classList.contains("open")) {
+      if (!menu.contains(e.target) && !btn?.contains(e.target)) {
+        closeIdeMenu();
+      }
+    }
+  });
+
+  // Close menu on Escape or toggle via Alt+M
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeIdeMenu();
+    } else if (e.altKey && (e.code === "KeyM" || e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      toggleIdeMenu();
+    }
+  });
+
   function formatCode() {
     if (!window.editor || !window.prettier) return;
     const code = window.editor.getValue();
@@ -1080,6 +1128,8 @@
   window.updateFontSize = updateFontSize;
   window.togglePanel = togglePanel;
   window.setPanel = setPanel;
+  window.toggleIdeMenu = toggleIdeMenu;
+  window.closeIdeMenu = closeIdeMenu;
   window.handleSendPrompt = handleSendPrompt;
   window.refreshModels = refreshModels;
   window.saveWorkspaceToMongoDB = saveWorkspaceToMongoDB;

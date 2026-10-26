@@ -41,7 +41,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.js"></script>
 
   <!-- Clean Theme Stylesheet -->
-  <link rel="stylesheet" href="/style_codeeditor.css?v=5" />
+  <link rel="stylesheet" href="/style_codeeditor.css?v=6" />
 
   <style>
     /* Panel visibility helper — driven by the Ctrl+B / Ctrl+M / Ctrl+` toggles */
@@ -49,19 +49,157 @@
       display: none !important;
     }
   </style>
+
+  <script>
+    /* Immediate lightweight menu toggle support before external bundles finish loading */
+    window.toggleIdeMenu = window.toggleIdeMenu || function (e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      var m = document.getElementById("ide-menu-dropdown");
+      var b = document.getElementById("btn-ide-menu");
+      if (m) {
+        var open = m.classList.toggle("open");
+        if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+    };
+    window.closeIdeMenu = window.closeIdeMenu || function () {
+      var m = document.getElementById("ide-menu-dropdown");
+      if (m) {
+        m.classList.remove("open");
+        var b = document.getElementById("btn-ide-menu");
+        if (b) b.setAttribute("aria-expanded", "false");
+      }
+    };
+  </script>
 </head>
 
 <body>
   <!-- Header Bar -->
   <header class="editor-header">
-    <div class="brand-section">
-      <a href="/DashboardCodeEditor" class="editor-title" title="Return to Dashboard">
-        <i class="ri-terminal-box-line"></i>
-        <span>pce/editor</span>
-      </a>
-      <span class="workspace-badge">workspace-1</span>
+    <div class="header-left">
+      <!-- Menu Button with Dropdown -->
+      <div class="ide-menu-container">
+        <button type="button" class="btn-tool btn-menu" id="btn-ide-menu" title="Application Menu (Alt+M)"
+          aria-haspopup="true" aria-expanded="false" onclick="toggleIdeMenu(event)">
+          <i class="ri-menu-line"></i>
+          <span>Menu</span>
+        </button>
+
+        <div id="ide-menu-dropdown" class="ide-menu-dropdown" role="menu" aria-label="Application Menu">
+          <div class="ide-menu-group-label">File &amp; Workspace</div>
+          <button type="button" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu(); addFile();">
+            <i class="ri-file-add-line"></i>
+            <span class="ide-menu-text">New File</span>
+            <kbd class="ide-menu-shortcut">Ctrl+N</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu(); addFolder();">
+            <i class="ri-folder-add-line"></i>
+            <span class="ide-menu-text">New Folder</span>
+            <kbd class="ide-menu-shortcut">Shift+Ctrl+N</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu(); importFolder();">
+            <i class="ri-folder-open-line"></i>
+            <span class="ide-menu-text">Open Folder / Files</span>
+            <kbd class="ide-menu-shortcut">Shift+Ctrl+O</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem"
+            onclick="closeIdeMenu(); saveWorkspaceToMongoDB(false);">
+            <i class="ri-cloud-upload-line"></i>
+            <span class="ide-menu-text">Save Workspace</span>
+            <kbd class="ide-menu-shortcut">Ctrl+S</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem"
+            onclick="closeIdeMenu(); saveWorkspaceToMongoDB(true);">
+            <i class="ri-save-3-line"></i>
+            <span class="ide-menu-text">Save Workspace As…</span>
+            <kbd class="ide-menu-shortcut">Shift+Ctrl+S</kbd>
+          </button>
+          <a href="/DashboardCodeEditor" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu();">
+            <i class="ri-folder-cloud-line"></i>
+            <span class="ide-menu-text">Workspaces Dashboard</span>
+            <kbd class="ide-menu-shortcut">Ctrl+D</kbd>
+          </a>
+
+          <div class="ide-menu-divider"></div>
+
+          <div class="ide-menu-group-label">Tools &amp; Export</div>
+          <button type="button" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu(); formatCode();">
+            <i class="ri-magic-line"></i>
+            <span class="ide-menu-text">Format Code</span>
+            <kbd class="ide-menu-shortcut">Shift+Ctrl+F</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu(); exportFolder();">
+            <i class="ri-download-2-line"></i>
+            <span class="ide-menu-text">Export as ZIP</span>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem" onclick="closeIdeMenu(); exportToPDF();">
+            <i class="ri-file-pdf-line"></i>
+            <span class="ide-menu-text">Export as PDF</span>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem" id="btn-preview"
+            onclick="closeIdeMenu(); openHtmlPreview();">
+            <i class="ri-eye-line"></i>
+            <span class="ide-menu-text">Preview HTML</span>
+          </button>
+
+          <div class="ide-menu-item ide-menu-item-row" style="cursor: default;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <i class="ri-font-size-2"></i>
+              <span class="ide-menu-text">Font Size</span>
+            </div>
+            <div class="font-size-control" style="margin: 0;">
+              <input type="number" id="fontSize" value="15" min="10" max="32" onchange="updateFontSize()" />
+              <span style="font-size: 11px; color: var(--text-muted);">px</span>
+            </div>
+          </div>
+
+          <div class="ide-menu-divider"></div>
+
+          <div class="ide-menu-group-label">View Panels</div>
+          <button type="button" class="ide-menu-item" role="menuitem"
+            onclick="closeIdeMenu(); togglePanel('explorer');">
+            <i class="ri-folders-line"></i>
+            <span class="ide-menu-text">Toggle File Explorer</span>
+            <kbd class="ide-menu-shortcut">Ctrl+B</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem"
+            onclick="closeIdeMenu(); togglePanel('assistant');">
+            <i class="ri-sparkling-line"></i>
+            <span class="ide-menu-text">Toggle AI Assistant</span>
+            <kbd class="ide-menu-shortcut">Ctrl+M</kbd>
+          </button>
+          <button type="button" class="ide-menu-item" role="menuitem"
+            onclick="closeIdeMenu(); togglePanel('terminal');">
+            <i class="ri-terminal-line"></i>
+            <span class="ide-menu-text">Toggle Terminal</span>
+            <kbd class="ide-menu-shortcut">Ctrl+`</kbd>
+          </button>
+
+          <div class="ide-menu-divider"></div>
+
+          <div class="ide-menu-group-label">Account</div>
+          <a href="/DashboardCodeEditor?action=switch-user" id="btn-switch-user" class="ide-menu-item" role="menuitem"
+            onclick="closeIdeMenu();">
+            <i class="ri-user-shared-line"></i>
+            <span class="ide-menu-text">Switch User Profile</span>
+          </a>
+          <a href="/logout" id="btn-exit" class="ide-menu-item ide-menu-item-danger" role="menuitem"
+            onclick="closeIdeMenu();">
+            <i class="ri-logout-box-r-line"></i>
+            <span class="ide-menu-text">Exit Application</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="brand-section">
+        <a href="/DashboardCodeEditor" class="editor-title" title="Return to Dashboard">
+          <i class="ri-terminal-box-line"></i>
+          <span>pce/editor</span>
+        </a>
+        <span class="workspace-badge">workspace-1</span>
+      </div>
     </div>
 
+    <!-- Navigation buttons: ONLY Language Change and Run Button -->
     <div class="header-controls">
       <!-- Language Selector -->
       <select class="select-box" id="language" title="Programming Language">
@@ -88,58 +226,10 @@
                 <% } %>
       </select>
 
-      <button onclick="addFile()" class="btn-tool" title="Add File (Ctrl+N)">
-        <i class="ri-file-add-line"></i> <span>File</span>
-      </button>
-      <button onclick="addFolder()" class="btn-tool" title="Add Folder (Shift+Ctrl+N)">
-        <i class="ri-folder-add-line"></i> <span>Folder</span>
-      </button>
-      <button onclick="formatCode()" class="btn-tool" title="Format Code (Shift+Ctrl+F)">
-        <i class="ri-magic-line"></i> <span>Format</span>
-      </button>
+      <!-- Run Button -->
       <button onclick="runCode()" class="btn-tool btn-primary" title="Execute Code (Ctrl+Enter)">
         <i class="ri-play-fill"></i> <span>Run</span>
       </button>
-
-      <button onclick="exportFolder()" class="btn-tool" title="Export as ZIP">
-        <i class="ri-download-2-line"></i>
-      </button>
-      <button onclick="importFolder()" class="btn-tool" title="Open Project Folder / Files (Shift+Ctrl+O)">
-        <i class="ri-folder-open-line"></i> <span>Open</span>
-      </button>
-      <button onclick="saveWorkspaceToMongoDB(false)" class="btn-tool" title="Save Workspace to DB (Ctrl+S)">
-        <i class="ri-cloud-upload-line"></i> <span>Save</span>
-      </button>
-      <button onclick="saveWorkspaceToMongoDB(true)" class="btn-tool" title="Save Workspace As New (Shift+Ctrl+S)">
-        <i class="ri-save-3-line"></i> <span>Save As</span>
-      </button>
-      <button onclick="exportToPDF()" class="btn-tool" title="Export Code as PDF">
-        <i class="ri-file-pdf-line"></i> <span>PDF</span>
-      </button>
-      <button onclick="openHtmlPreview()" class="btn-tool" title="Preview HTML in browser tab" id="btn-preview">
-        <i class="ri-eye-line"></i> <span>Preview</span>
-      </button>
-
-      <span class="font-size-control">
-        <span>size:</span>
-        <input type="number" id="fontSize" value="15" min="10" max="32" onchange="updateFontSize()" />
-      </span>
-
-      <a href="/DashboardCodeEditor" class="btn-tool" title="Saved Workspaces & Documents (Ctrl+D)">
-        <i class="ri-folder-cloud-line"></i> <span>Workspaces</span>
-      </a>
-
-      <a href="/DashboardCodeEditor?action=switch-user" id="btn-switch-user" class="btn-tool"
-        style="color:#a1a1aa; text-decoration:none; display:flex; align-items:center; gap:4px;"
-        title="Switch User Profile">
-        <i class="ri-user-shared-line"></i> <span>User</span>
-      </a>
-
-      <a href="/logout" id="btn-exit" class="btn-tool"
-        style="color:#ef4444; text-decoration:none; display:flex; align-items:center; gap:4px;"
-        title="Exit Application">
-        <i class="ri-logout-box-r-line"></i> <span>Exit</span>
-      </a>
     </div>
   </header>
 
@@ -320,7 +410,7 @@
   <!-- Editor Core Logic & In-App Dialog System -->
   <script src="/editor.js?v=8"></script>
   <!-- Editor Toolbar, Code Execution, AI Streaming, & Workspace Exports -->
-  <script src="/editor_actions.js?v=8" defer></script>
+  <script src="/editor_actions.js?v=9" defer></script>
 </body>
 
 </html>

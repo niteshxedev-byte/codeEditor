@@ -26,6 +26,9 @@ body {
   color: var(--text-snow);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -40,14 +43,25 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  z-index: 20;
+  padding: 0 14px;
+  gap: 12px;
+  z-index: 50;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .brand-section {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .editor-title {
@@ -79,7 +93,163 @@ body {
 .header-controls {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── IDE Menu (Dropdown & Light Dismiss) ── */
+.ide-menu-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-menu {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-edge);
+  font-weight: 500;
   gap: 6px;
+  padding: 0 11px;
+  height: 28px;
+}
+
+.btn-menu:hover,
+.btn-menu[aria-expanded="true"] {
+  background: var(--bg-elevated);
+  border-color: var(--accent-blue);
+  color: #ffffff;
+}
+
+.ide-menu-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 280px;
+  max-height: calc(100dvh - 56px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #0a0a0c;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 6px;
+  z-index: 1000;
+  scrollbar-width: thin;
+  animation: menuFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ide-menu-dropdown.open {
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ide-menu-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 6px 10px 4px 10px;
+  user-select: none;
+}
+
+.ide-menu-divider {
+  height: 1px;
+  background: #1e1e24;
+  margin: 4px 6px;
+}
+
+.ide-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: #e4e4e7;
+  font-size: 12.5px;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.ide-menu-item:hover,
+.ide-menu-item:focus-visible {
+  background: #18181b;
+  color: #ffffff;
+  outline: none;
+}
+
+.ide-menu-item i {
+  font-size: 14px;
+  color: #a1a1aa;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.ide-menu-item:hover i,
+.ide-menu-item:focus-visible i {
+  color: var(--accent-blue);
+}
+
+.ide-menu-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ide-menu-shortcut {
+  font-size: 10px;
+  font-family: "JetBrains Mono", monospace;
+  color: #71717a;
+  background: #141416;
+  border: 1px solid #27272a;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.ide-menu-item-row {
+  padding: 5px 10px;
+}
+
+.ide-menu-item-danger {
+  color: #f87171;
+}
+
+.ide-menu-item-danger i {
+  color: #f87171;
+}
+
+.ide-menu-item-danger:hover,
+.ide-menu-item-danger:focus-visible {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.ide-menu-item-danger:hover i,
+.ide-menu-item-danger:focus-visible i {
+  color: #ef4444;
 }
 
 .select-box {
@@ -172,11 +342,13 @@ body {
   display: flex;
   overflow: hidden;
   position: relative;
+  min-height: 0;
 }
 
 #file-explorer {
   width: 220px;
   min-width: 180px;
+  flex-shrink: 0;
   background-color: var(--bg-void);
   border-right: 1px solid var(--border-edge);
   display: flex;
@@ -233,7 +405,7 @@ body {
   flex-direction: column;
   background-color: var(--bg-void);
   position: relative;
-  min-width: 300px;
+  min-width: 0;
 }
 
 .editor-tabs-bar {
@@ -309,8 +481,10 @@ body {
 }
 
 #console-wrapper {
-  width: 340px;
-  min-width: 280px;
+  width: 320px;
+  min-width: 260px;
+  max-width: 340px;
+  flex-shrink: 0;
   background-color: var(--bg-void);
   border-left: 1px solid var(--border-edge);
   display: flex;
@@ -552,8 +726,13 @@ dialog.ide-modal-dialog::backdrop {
 }
 
 @keyframes ideFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes ideSlideDown {
@@ -561,6 +740,7 @@ dialog.ide-modal-dialog::backdrop {
     opacity: 0;
     transform: translateY(-12px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -761,6 +941,7 @@ dialog.ide-modal-dialog::backdrop {
     opacity: 0;
     transform: translateY(12px) scale(0.96);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -777,10 +958,21 @@ dialog.ide-modal-dialog::backdrop {
   flex-shrink: 0;
 }
 
-.ide-toast.toast-info .ide-toast-icon { color: #3b82f6; }
-.ide-toast.toast-success .ide-toast-icon { color: #22c55e; }
-.ide-toast.toast-warning .ide-toast-icon { color: #eab308; }
-.ide-toast.toast-error .ide-toast-icon { color: #ef4444; }
+.ide-toast.toast-info .ide-toast-icon {
+  color: #3b82f6;
+}
+
+.ide-toast.toast-success .ide-toast-icon {
+  color: #22c55e;
+}
+
+.ide-toast.toast-warning .ide-toast-icon {
+  color: #eab308;
+}
+
+.ide-toast.toast-error .ide-toast-icon {
+  color: #ef4444;
+}
 
 .ide-toast-message {
   flex: 1;
@@ -807,3 +999,43 @@ dialog.ide-modal-dialog::backdrop {
   background: var(--bg-elevated);
 }
 
+/* ── Accessible Focus States for TV & Keyboard ── */
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* ── Responsive & High-DPI (150% scaling) Rules ── */
+@media (max-width: 1280px) {
+  #console-wrapper {
+    width: 290px;
+  }
+}
+
+@media (max-width: 1024px) {
+  #file-explorer {
+    width: 200px;
+  }
+
+  #console-wrapper {
+    width: 270px;
+  }
+
+  .header-controls .select-box {
+    max-width: 170px;
+  }
+}
+
+@media (max-width: 768px) {
+  .brand-section .workspace-badge {
+    display: none;
+  }
+
+  .header-controls .select-box {
+    max-width: 135px;
+  }
+
+  .editor-header {
+    padding: 0 10px;
+  }
+}
