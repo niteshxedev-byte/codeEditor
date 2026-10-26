@@ -213,12 +213,18 @@ ${activeCode || "// (empty buffer)"}
 \`\`\`${extraContext}`;
 
   const { baseUrl, headers } = await resolveOllamaEndpoint(modelName);
+
+  // If attempting to use cloud Ollama without an API key, fail fast with a clear message
+  if (baseUrl.includes("ollama.com") && (!headers || !headers.Authorization)) {
+    throw new Error("OLLAMA_API_KEY is not configured on this server. Please add your OLLAMA_API_KEY to .env to use cloud models.");
+  }
   
   const llm = new ChatOllama({
     model: modelName,
     baseUrl: baseUrl,
     headers: headers,
     temperature: 0.1,
+    maxRetries: 1, // Fail fast instead of retrying 6 times with exponential backoff (which freezes for 75s+)
   });
 
   const actions = []; // Collect actions for frontend
@@ -442,7 +448,10 @@ Returns ready-to-paste <link> tags and CSS font-family values. Instant — no ne
   }];
 
   try {
-    const result = await agentExecutor.invoke({ input: prompt }, { callbacks });
+    const result = await agentExecutor.invoke(
+      { input: prompt },
+      { callbacks, signal: AbortSignal.timeout(35000) }
+    );
     let fallbackActions = actions;
     if (actions.length === 0 && result.output) {
       fallbackActions = extractCodeBlocksAndActions(result.output, effectiveLanguage, activeFileName, prompt);
