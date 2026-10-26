@@ -75,7 +75,8 @@ export const getUserStorageDir = (userId, type) => {
         throw new Error(`Invalid storage type: ${type}. Must be "code" or "files".`);
     }
 
-    const storageRoot = path.resolve(process.cwd(), "storage/users", userId, type);
+    const subDir = type === "code" ? "projects" : "pdfs";
+    const storageRoot = path.resolve(process.cwd(), "src/public/uploads", subDir, userId);
     if (!fs.existsSync(storageRoot)) {
         fs.mkdirSync(storageRoot, { recursive: true });
     }
@@ -108,7 +109,7 @@ export const resolveUserStoragePath = (userId, type, storedPathOrUrl) => {
             return resolvedPath;
         }
 
-        // Backward compatibility: check legacy public uploads location
+        // Fallback: check flat (non-per-user) public uploads location for legacy files
         const legacySubDir = type === "code" ? "projects" : "pdfs";
         const publicDir = path.resolve(process.cwd(), "src/public/uploads", legacySubDir) + path.sep;
         const legacyPath = path.resolve(publicDir, filename);
