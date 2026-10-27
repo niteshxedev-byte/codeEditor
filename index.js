@@ -8,6 +8,7 @@ import session from 'express-session';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import helmet from 'helmet';
 
 import aboutProjectRoute from "./src/Routes/aboutProjectRoutes/aboutProjectRoute.js";
 import loginRoute from "./src/Routes/authRoute/loginRoutes/loginRoute.js";
@@ -18,6 +19,12 @@ import connectDB from './src/Config/db.connection.js';
 import { runTeacherAgent } from "./src/Services/langchainAgent.service.js";
 
 dotenv.config();
+
+const isProduction = process.env.NODE_ENV === "production";
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
 
 // Validate critical security secrets on bootstrap
 const INSECURE_JWT_SECRETS = new Set([
@@ -36,48 +43,86 @@ if (!jwtSecret || jwtSecret.length < 32 || INSECURE_JWT_SECRETS.has(jwtSecret.to
     );
 }
 
+if (isProduction) {
+    if (!process.env.MONGO_URI) {
+        throw new Error("FATAL: MONGO_URI must be configured in production.");
+    }
+    if (allowedOrigins.length === 0) {
+        throw new Error("FATAL: ALLOWED_ORIGINS must be configured in production.");
+    }
+}
+
 await connectDB(process.env.MONGO_URI);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.disable('x-powered-by');
+
+// Security headers with strict Content-Security-Policy via Helmet
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "'unsafe-eval'", // Monaco editor worker bundle requires eval for grammar syntax parsers
+                "https://cdnjs.cloudflare.com",
+                "https://cdn.jsdelivr.net",
+                "https://cdn.socket.io",
+            ],
+            styleSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "https://fonts.googleapis.com",
+                "https://cdn.jsdelivr.net",
+                "https://cdnjs.cloudflare.com",
+            ],
+            fontSrc: [
+                "'self'",
+                "https://fonts.gstatic.com",
+                "https://cdn.jsdelivr.net",
+            ],
+            connectSrc: ["'self'", "ws:", "wss:"],
+            imgSrc: ["'self'", "data:", "blob:"],
+            objectSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+        },
+    },
+    crossOriginEmbedderPolicy: false,
+}));
+
+// Strict CORS validator
+const checkCorsOrigin = (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, same-origin)
+    if (!origin) return callback(null, true);
+
+    // Allow origins explicitly listed in ALLOWED_ORIGINS
+    if (allowedOrigins.length > 0 && (allowedOrigins.includes(origin) || allowedOrigins.includes("*"))) {
+        return callback(null, true);
+    }
+
+    // In non-production, permit localhost, loopback, and local network IPs
+    if (!isProduction) {
+        const localOrLanRegex = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|\[::1\])(:\d+)?$/;
+        if (localOrLanRegex.test(origin)) {
+            return callback(null, true);
+        }
+    }
+
+    return callback(new Error("CORS not allowed"));
+};
+
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
     cors: {
-        origin: (origin, callback) => {
-            // Allow requests with no origin (e.g. mobile apps, curl, same-origin)
-            if (!origin) return callback(null, true);
-
-            // Allow localhost, loopback, and local network IPs (e.g. 192.168.x.x, 10.x.x.x, 172.x.x.x)
-            const localOrLanRegex = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|\[::1\])(:\d+)?$/;
-            if (localOrLanRegex.test(origin)) {
-                return callback(null, true);
-            }
-
-            // Allow origins specified in environment variables
-            const envOrigins = (process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
-                .split(",")
-                .map((o) => o.trim())
-                .filter(Boolean);
-            if (envOrigins.length > 0 && (envOrigins.includes(origin) || envOrigins.includes("*"))) {
-                return callback(null, true);
-            }
-
-            // In production Linux server deployments, permit HTTP/HTTPS origins serving this app
-            try {
-                const parsed = new URL(origin);
-                if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-                    return callback(null, true);
-                }
-            } catch (_) {}
-
-            return callback(new Error("CORS not allowed"));
-        },
+        origin: checkCorsOrigin,
         credentials: true
     },
-    transports: ["websocket", "polling"], // Allow polling fallback if WebSockets are blocked by proxies
+    transports: ["websocket", "polling"],
 });
 
 // Security headers
@@ -119,7 +164,19 @@ app.use((req, res, next) => {
 io.on('connection', (socket) => {
     socket.on('ask-ai', async (data) => {
         try {
+            if (!data || typeof data !== 'object') {
+                return socket.emit('ai_error', { message: 'Invalid payload structure' });
+            }
+
             const { prompt, model, fileSystem, activeFileId, code, language } = data;
+
+            // Reject oversized payloads (> 100 KB)
+            if (typeof prompt === 'string' && prompt.length > 100 * 1024) {
+                return socket.emit('ai_error', { message: 'Payload rejected: prompt exceeds 100 KB limit.' });
+            }
+            if (typeof code === 'string' && code.length > 100 * 1024) {
+                return socket.emit('ai_error', { message: 'Payload rejected: code exceeds 100 KB limit.' });
+            }
 
             const emitter = {
                 onAnalysisChunk: (chunk) => socket.emit('ai_chunk', chunk),
@@ -152,9 +209,28 @@ io.on('connection', (socket) => {
 });
 
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '200kb' }));
+app.use(express.urlencoded({ extended: true, limit: '200kb' }));
 app.use(cookieParser());
+
+// NoSQL injection sanitizer: sanitize keys starting with '$' or containing '.'
+const sanitizeMongo = (target) => {
+    if (!target || typeof target !== 'object') return;
+    for (const key of Object.keys(target)) {
+        if (key.startsWith('$') || key.includes('.')) {
+            delete target[key];
+        } else if (typeof target[key] === 'object' && target[key] !== null) {
+            sanitizeMongo(target[key]);
+        }
+    }
+};
+
+app.use((req, res, next) => {
+    if (req.body) sanitizeMongo(req.body);
+    if (req.query) sanitizeMongo(req.query);
+    if (req.params) sanitizeMongo(req.params);
+    next();
+});
 
 // Trust proxy for Docker and reverse proxies
 app.set('trust proxy', 1);
@@ -195,6 +271,41 @@ app.use("/", loginRoute);
 app.use("/", registerRoute);
 app.use("/", dashbordRoute);
 app.use("/", editorRoute);
+
+// Global production-aware error handling middleware (prevents stack trace disclosure)
+app.use((err, req, res, next) => {
+    console.error("Unhandled Application Error:", err.message || err);
+
+    if (res.headersSent) {
+        return next(err);
+    }
+
+    const isProd = process.env.NODE_ENV === "production";
+    const status = err.status || err.statusCode || 500;
+    const message = isProd && status === 500
+        ? "An internal server error occurred."
+        : err.message || "An unexpected error occurred.";
+
+    if (req.is('json') || req.path.startsWith('/api') || req.xhr) {
+        return res.status(status).json({
+            error: message,
+            status: "Error",
+            ...(isProd ? {} : { stack: err.stack }),
+        });
+    }
+
+    return res.status(status).send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Error</title><style>body{background:#000;color:#fff;font-family:sans-serif;padding:40px;text-align:center;}</style></head>
+        <body>
+            <h2>Something went wrong</h2>
+            <p>${message}</p>
+            <p><a href="/aboutCodeEditor" style="color:#2563eb;">Return to Home</a></p>
+        </body>
+        </html>
+    `);
+});
 
 httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

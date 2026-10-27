@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import loginCodeEditorController from '../../../Controllers/authControllers/loginCodeEditorController.js';
 import logoutCodeEditorController from '../../../Controllers/authControllers/logoutCodeEditorController.js';
 import { requireApiAuth } from '../../../Middlewares/auth.middleware.js';
+import { authLimiter } from '../../../Middlewares/rateLimiter.middleware.js';
 
 const router = Router();
 
@@ -29,9 +30,9 @@ router.get('/loginCodeEditor', (req, res) => {
     return res.redirect('/login');
 });
 
-// Authentication endpoints
-router.post('/login', loginCodeEditorController);
-router.post('/api/login', loginCodeEditorController);
+// Authentication endpoints (rate limited: 5 requests per minute per IP)
+router.post('/login', authLimiter, loginCodeEditorController);
+router.post('/api/login', authLimiter, loginCodeEditorController);
 
 // Authenticated user profile endpoint
 router.get('/api/me', requireApiAuth, (req, res) => {

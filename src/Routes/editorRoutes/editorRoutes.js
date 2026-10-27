@@ -15,6 +15,7 @@ import Project from "../../Models/userModels/projectsModel.js/projectModel.js";
 import Pdf from "../../Models/userModels/pdfModels.js";
 import { runTeacherAgent, getAvailableModels } from "../../Services/langchainAgent.service.js";
 import { requireApiAuth as authenticate, requireAuth } from "../../Middlewares/auth.middleware.js";
+import { executionLimiter, aiLimiter } from "../../Middlewares/rateLimiter.middleware.js";
 import {
   getUserStorageDir,
   resolveUserStoragePath,
@@ -250,8 +251,8 @@ const handleRunExecution = async (req, res) => {
   }
 };
 
-router.post("/runCode", authenticate, handleRunExecution);
-router.post("/run", authenticate, handleRunExecution);
+router.post("/runCode", authenticate, executionLimiter, handleRunExecution);
+router.post("/run", authenticate, executionLimiter, handleRunExecution);
 
 // Save Project Endpoint (Create new or Update existing workspace in isolated user storage & MongoDB)
 router.post("/save-project", authenticate, handleUploadSingle("projectFile"), async (req, res) => {
@@ -348,7 +349,7 @@ router.post("/save-pdf", authenticate, handleUploadSingle("pdfFile"), async (req
 });
 
 // Simple Teacher Agent Endpoint
-router.post("/ask-ai", authenticate, async (req, res) => {
+router.post("/ask-ai", authenticate, aiLimiter, async (req, res) => {
   try {
     const { prompt, model, fileSystem, activeFileId, code, language } = req.body;
     if (!prompt) {
