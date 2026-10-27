@@ -1,6 +1,11 @@
 import { Router } from "express";
 import mongoose from "mongoose";
-import { executeCode, SUPPORTED_LANGUAGES } from "../../Config/codeExecution.config.js";
+import {
+  executeCode,
+  acquireExecutionSlot,
+  releaseExecutionSlot,
+  SUPPORTED_LANGUAGES,
+} from "../../Config/codeExecution.config.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -195,8 +200,22 @@ router.get("/api/models", authenticate, async (req, res) => {
   res.json({ models });
 });
 
-// Run Code Endpoint
-router.post("/runCode", authenticate, async (req, res) => {
+// Run Code Endpoint (with /run alias and per-user + global concurrency limits)
+const handleRunExecution = async (req, res) => {
+  const userId = req.user?.userId;
+  const slot = acquireExecutionSlot(userId);
+  if (!slot.allowed) {
+    return res.status(slot.status || 429).json({
+      stdout: "",
+      stderr: slot.error,
+      compile_output: "",
+      time: 0,
+      memory: 0,
+      status: "Too Many Requests",
+      error: slot.error,
+    });
+  }
+
   try {
     const { code, language_id, stdin } = req.body;
 
@@ -208,7 +227,12 @@ router.post("/runCode", authenticate, async (req, res) => {
       code,
       language_id,
       stdin,
+      userId,
     });
+
+    if (executionResult.status === "Sandbox Unavailable") {
+      return res.status(503).json(executionResult);
+    }
 
     return res.json(executionResult);
   } catch (error) {
@@ -221,8 +245,13 @@ router.post("/runCode", authenticate, async (req, res) => {
       memory: 0,
       status: "Error",
     });
+  } finally {
+    releaseExecutionSlot(userId);
   }
-});
+};
+
+router.post("/runCode", authenticate, handleRunExecution);
+router.post("/run", authenticate, handleRunExecution);
 
 // Save Project Endpoint (Create new or Update existing workspace in isolated user storage & MongoDB)
 router.post("/save-project", authenticate, handleUploadSingle("projectFile"), async (req, res) => {

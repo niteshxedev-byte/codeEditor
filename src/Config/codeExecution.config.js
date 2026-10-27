@@ -5,11 +5,56 @@ import path from "path";
 import { tmpdir } from "os";
 
 /**
- * Local code execution engine — no external API required.
- * Each language runs via its native compiler/interpreter installed on the host.
+ * Local code execution engine with security hardening:
+ * - Isolated SAFE_ENV (never inherits process.env)
+ * - 5,000ms wall-clock hard timeout with SIGKILL
+ * - 100 KB max stdout+stderr output cap
+ * - Graceful ENOENT error handling (503 sandbox unavailable)
+ * - Per-user & global concurrency limits
  */
 
-const EXEC_TIMEOUT_MS = 10_000;
+const EXEC_TIMEOUT_MS = 5000; // 5 seconds strict wall-clock timeout
+const MAX_OUTPUT_BYTES = 100 * 1024; // 100 KB output limit
+
+// Explicit safe environment allowlist: strictly omit parent secrets & tokens
+const SAFE_ENV = {
+  PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  HOME: "/tmp",
+  LANG: "C.UTF-8",
+  LC_ALL: "C.UTF-8",
+  TMPDIR: "/tmp",
+};
+
+// Concurrency tracking: 1 run per user, global max configurable
+const activeUserRuns = new Set();
+let globalActiveRuns = 0;
+
+export function acquireExecutionSlot(userId) {
+  const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_RUNS, 10) || 5;
+  if (globalActiveRuns >= maxConcurrent) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Global execution limit reached (${maxConcurrent} concurrent runs). Please wait and try again.`,
+    };
+  }
+  if (userId && activeUserRuns.has(userId)) {
+    return {
+      allowed: false,
+      status: 429,
+      error: "You already have a code execution in progress. Please wait for it to complete.",
+    };
+  }
+
+  globalActiveRuns++;
+  if (userId) activeUserRuns.add(userId);
+  return { allowed: true };
+}
+
+export function releaseExecutionSlot(userId) {
+  globalActiveRuns = Math.max(0, globalActiveRuns - 1);
+  if (userId) activeUserRuns.delete(userId);
+}
 
 /**
  * Sequential language IDs (1-15) mapped to local runtimes.
@@ -34,43 +79,126 @@ export const SUPPORTED_LANGUAGES = [
 ];
 
 /**
- * Spawns a child process, captures stdout/stderr, enforces timeout.
+ * Spawns a child process with:
+ * - SAFE_ENV allowlist (never spreading process.env)
+ * - 5,000ms wall-clock timeout killing with SIGKILL
+ * - 100 KB stdout+stderr output cap
+ * - Safe stdio handling with graceful ENOENT capture
  *
  * @param {string}   cmd
  * @param {string[]} args
  * @param {{ cwd?: string, input?: string }} [options]
- * @returns {Promise<{ stdout: string, stderr: string, code: number|null, timedOut: boolean }>}
+ * @returns {Promise<{ stdout: string, stderr: string, code: number|null, timedOut: boolean, isEnoent: boolean, outputLimitExceeded: boolean }>}
  */
 async function runProcess(cmd, args, options = {}) {
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { cwd: options.cwd, shell: false });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let outputLimitExceeded = false;
+    let isEnoent = false;
+    let totalOutputBytes = 0;
+    let proc = null;
+    let timer = null;
 
-    const timer = setTimeout(() => {
+    try {
+      proc = spawn(cmd, args, {
+        cwd: options.cwd || "/tmp",
+        env: SAFE_ENV,
+        shell: false,
+        stdio: options.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+      });
+    } catch (spawnErr) {
+      return resolve({
+        stdout: "",
+        stderr: `Sandbox error: ${spawnErr.message}`,
+        code: -1,
+        timedOut: false,
+        isEnoent: spawnErr.code === "ENOENT",
+        outputLimitExceeded: false,
+      });
+    }
+
+    timer = setTimeout(() => {
       timedOut = true;
-      proc.kill("SIGKILL");
+      try {
+        proc.kill("SIGKILL");
+      } catch (_) {}
     }, EXEC_TIMEOUT_MS);
 
-    proc.stdout?.on("data", (d) => { stdout += d.toString(); });
-    proc.stderr?.on("data", (d) => { stderr += d.toString(); });
+    const onData = (chunk, isStderr = false) => {
+      totalOutputBytes += chunk.length;
+      if (totalOutputBytes > MAX_OUTPUT_BYTES) {
+        if (!outputLimitExceeded) {
+          outputLimitExceeded = true;
+          stderr += "\n[Execution terminated: combined stdout/stderr exceeded 100 KB limit]";
+          try {
+            proc.kill("SIGKILL");
+          } catch (_) {}
+        }
+        return;
+      }
+      if (isStderr) {
+        stderr += chunk.toString();
+      } else {
+        stdout += chunk.toString();
+      }
+    };
+
+    proc.stdout?.on("data", (chunk) => onData(chunk, false));
+    proc.stderr?.on("data", (chunk) => onData(chunk, true));
 
     proc.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ stdout, stderr, code, timedOut });
+      resolve({
+        stdout,
+        stderr,
+        code,
+        timedOut,
+        isEnoent,
+        outputLimitExceeded,
+      });
     });
 
     proc.on("error", (err) => {
       clearTimeout(timer);
-      resolve({ stdout, stderr: err.message, code: -1, timedOut: false });
+      isEnoent = err.code === "ENOENT";
+      const message = isEnoent
+        ? `Sandbox unavailable: runtime executable '${cmd}' not found on server.`
+        : `Execution failed: ${err.message}`;
+      resolve({
+        stdout,
+        stderr: message,
+        code: -1,
+        timedOut: false,
+        isEnoent,
+        outputLimitExceeded,
+      });
     });
 
-    if (options.input) {
-      proc.stdin?.write(options.input);
+    if (options.input && proc.stdin) {
+      try {
+        proc.stdin.write(options.input);
+        proc.stdin.end();
+      } catch (_) {}
     }
-    proc.stdin?.end();
   });
+}
+
+function resolveStatus(res, defaultSuccess = "Accepted") {
+  if (res.isEnoent) return "Sandbox Unavailable";
+  if (res.timedOut) return "Time Limit Exceeded";
+  if (res.outputLimitExceeded) return "Output Limit Exceeded";
+  if (res.code !== 0) return "Runtime Error";
+  return defaultSuccess;
+}
+
+function resolveCompileStatus(res) {
+  if (res.isEnoent) return "Sandbox Unavailable";
+  if (res.timedOut) return "Time Limit Exceeded";
+  if (res.outputLimitExceeded) return "Output Limit Exceeded";
+  if (res.code !== 0) return "Compilation Error";
+  return "Accepted";
 }
 
 /**
@@ -137,8 +265,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("node", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -151,8 +278,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         );
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -161,8 +287,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("python3", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -175,15 +300,15 @@ export async function executeCode({ code, language_id, stdin = "" }) {
           { cwd: tmpDir }
         );
         compile_output = compRes.stdout + compRes.stderr;
-        if (compRes.code !== 0) {
-          status = "Compilation Error";
+        status = resolveCompileStatus(compRes);
+        if (compRes.code !== 0 || compRes.isEnoent) {
+          if (compRes.isEnoent) stderr = compRes.stderr;
           break;
         }
         const runRes = await runProcess(outFile, [], procOpts);
         stdout = runRes.stdout;
         stderr = runRes.stderr;
-        if (runRes.timedOut)  status = "Time Limit Exceeded";
-        else if (runRes.code !== 0) status = "Runtime Error";
+        status = resolveStatus(runRes);
         break;
       }
 
@@ -196,15 +321,15 @@ export async function executeCode({ code, language_id, stdin = "" }) {
           { cwd: tmpDir }
         );
         compile_output = compRes.stdout + compRes.stderr;
-        if (compRes.code !== 0) {
-          status = "Compilation Error";
+        status = resolveCompileStatus(compRes);
+        if (compRes.code !== 0 || compRes.isEnoent) {
+          if (compRes.isEnoent) stderr = compRes.stderr;
           break;
         }
         const runRes = await runProcess(outFile, [], procOpts);
         stdout = runRes.stdout;
         stderr = runRes.stderr;
-        if (runRes.timedOut)  status = "Time Limit Exceeded";
-        else if (runRes.code !== 0) status = "Runtime Error";
+        status = resolveStatus(runRes);
         break;
       }
 
@@ -212,8 +337,9 @@ export async function executeCode({ code, language_id, stdin = "" }) {
       case 6: {
         const compRes = await runProcess("javac", [sourceFile], { cwd: tmpDir });
         compile_output = compRes.stdout + compRes.stderr;
-        if (compRes.code !== 0) {
-          status = "Compilation Error";
+        status = resolveCompileStatus(compRes);
+        if (compRes.code !== 0 || compRes.isEnoent) {
+          if (compRes.isEnoent) stderr = compRes.stderr;
           break;
         }
         const runRes = await runProcess(
@@ -223,8 +349,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         );
         stdout = runRes.stdout;
         stderr = runRes.stderr;
-        if (runRes.timedOut)  status = "Time Limit Exceeded";
-        else if (runRes.code !== 0) status = "Runtime Error";
+        status = resolveStatus(runRes);
         break;
       }
 
@@ -237,15 +362,15 @@ export async function executeCode({ code, language_id, stdin = "" }) {
           { cwd: tmpDir }
         );
         compile_output = compRes.stdout + compRes.stderr;
-        if (compRes.code !== 0) {
-          status = "Compilation Error";
+        status = resolveCompileStatus(compRes);
+        if (compRes.code !== 0 || compRes.isEnoent) {
+          if (compRes.isEnoent) stderr = compRes.stderr;
           break;
         }
         const runRes = await runProcess(outFile, [], procOpts);
         stdout = runRes.stdout;
         stderr = runRes.stderr;
-        if (runRes.timedOut)  status = "Time Limit Exceeded";
-        else if (runRes.code !== 0) status = "Runtime Error";
+        status = resolveStatus(runRes);
         break;
       }
 
@@ -254,8 +379,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("go", ["run", sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -264,16 +388,9 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("dotnet-script", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) {
-          // dotnet-script not installed is a common failure — give helpful hint
-          status = "Runtime Error";
-          if (res.stderr.includes("not found") || res.stderr.includes("ENOENT")) {
-            stderr =
-              "dotnet-script is not installed on this server. " +
-              "Install it with: dotnet tool install -g dotnet-script\n\n" +
-              res.stderr;
-          }
+        status = resolveStatus(res);
+        if (res.code !== 0 && (res.stderr.includes("not found") || res.isEnoent)) {
+          stderr = "dotnet-script is not installed on this server. Install it with: dotnet tool install -g dotnet-script\n\n" + res.stderr;
         }
         break;
       }
@@ -283,8 +400,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("php", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -293,30 +409,20 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("ruby", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
-      // --- Swift (optional — large install, may not be present) ---
+      // --- Swift ---
       case 12: {
         const res = await runProcess("swift", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut) {
-          status = "Time Limit Exceeded";
-        } else if (res.code !== 0) {
-          status = "Runtime Error";
-          if (res.stderr.includes("not found") || res.stderr.includes("ENOENT")) {
-            stderr =
-              "Swift is not installed on this server " +
-              "(it is optional due to its large size).\n\n" + res.stderr;
-          }
-        }
+        status = resolveStatus(res);
         break;
       }
 
-      // --- Kotlin (optional — large install, may not be present) ---
+      // --- Kotlin ---
       case 13: {
         const jarFile = path.join(tmpDir, "solution.jar");
         const compRes = await runProcess(
@@ -325,20 +431,15 @@ export async function executeCode({ code, language_id, stdin = "" }) {
           { cwd: tmpDir }
         );
         compile_output = compRes.stdout + compRes.stderr;
-        if (compRes.code !== 0) {
-          status = "Compilation Error";
-          if (compRes.stderr.includes("not found") || compRes.stderr.includes("ENOENT")) {
-            compile_output =
-              "Kotlin compiler (kotlinc) is not installed on this server " +
-              "(it is optional due to its large size).\n\n" + compile_output;
-          }
+        status = resolveCompileStatus(compRes);
+        if (compRes.code !== 0 || compRes.isEnoent) {
+          if (compRes.isEnoent) stderr = compRes.stderr;
           break;
         }
         const runRes = await runProcess("java", ["-jar", jarFile], procOpts);
         stdout = runRes.stdout;
         stderr = runRes.stderr;
-        if (runRes.timedOut)  status = "Time Limit Exceeded";
-        else if (runRes.code !== 0) status = "Runtime Error";
+        status = resolveStatus(runRes);
         break;
       }
 
@@ -350,8 +451,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         });
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -360,8 +460,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
         const res = await runProcess("bash", [sourceFile], procOpts);
         stdout = res.stdout;
         stderr = res.stderr;
-        if (res.timedOut)  status = "Time Limit Exceeded";
-        else if (res.code !== 0) status = "Runtime Error";
+        status = resolveStatus(res);
         break;
       }
 
@@ -393,4 +492,7 @@ export async function executeCode({ code, language_id, stdin = "" }) {
 export default {
   SUPPORTED_LANGUAGES,
   executeCode,
+  acquireExecutionSlot,
+  releaseExecutionSlot,
+  SAFE_ENV,
 };
