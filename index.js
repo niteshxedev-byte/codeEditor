@@ -19,6 +19,23 @@ import { runTeacherAgent } from "./src/Services/langchainAgent.service.js";
 
 dotenv.config();
 
+// Validate critical security secrets on bootstrap
+const INSECURE_JWT_SECRETS = new Set([
+    'secret',
+    'changeme',
+    'your-secret-key',
+    'your_jwt_secret_key_here',
+    'supersecretkey123',
+    'jwt_secret',
+]);
+
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret.length < 32 || INSECURE_JWT_SECRETS.has(jwtSecret.toLowerCase())) {
+    throw new Error(
+        "FATAL SECURITY CONFIGURATION: JWT_SECRET is missing, shorter than 32 characters, or set to an insecure default."
+    );
+}
+
 await connectDB(process.env.MONGO_URI);
 
 const __filename = fileURLToPath(import.meta.url);
@@ -84,7 +101,7 @@ io.use((socket, next) => {
         if (!token) {
             return next(new Error("Authentication required: Session token missing"));
         }
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         socket.user = decoded;
         next();
     } catch (err) {

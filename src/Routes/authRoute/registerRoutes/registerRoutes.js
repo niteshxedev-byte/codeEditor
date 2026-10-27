@@ -7,7 +7,7 @@ const router = Router();
 router.get('/register', (req, res) => {
     if (req.cookies?.token) {
         try {
-            jwt.verify(req.cookies.token, process.env.JWT_SECRET);
+            jwt.verify(req.cookies.token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             return res.redirect('/DashboardCodeEditor');
         } catch (_) {}
     }

@@ -2,13 +2,14 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import loginCodeEditorController from '../../../Controllers/authControllers/loginCodeEditorController.js';
 import logoutCodeEditorController from '../../../Controllers/authControllers/logoutCodeEditorController.js';
+import { requireApiAuth } from '../../../Middlewares/auth.middleware.js';
 
 const router = Router();
 
 router.get('/login', async (req, res) => {
     if (req.query.force !== 'true' && req.cookies?.token) {
         try {
-            jwt.verify(req.cookies.token, process.env.JWT_SECRET);
+            jwt.verify(req.cookies.token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             return res.redirect('/DashboardCodeEditor');
         } catch (_) { }
     }
@@ -28,7 +29,21 @@ router.get('/loginCodeEditor', (req, res) => {
     return res.redirect('/login');
 });
 
+// Authentication endpoints
 router.post('/login', loginCodeEditorController);
+router.post('/api/login', loginCodeEditorController);
+
+// Authenticated user profile endpoint
+router.get('/api/me', requireApiAuth, (req, res) => {
+    return res.json({
+        success: true,
+        user: {
+            userId: req.user.userId,
+            username: req.user.username,
+            email: req.user.email,
+        }
+    });
+});
 
 // Logout route - clears the JWT cookie and redirects to /login
 router.get('/logout', logoutCodeEditorController);

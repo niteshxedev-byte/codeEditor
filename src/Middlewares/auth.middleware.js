@@ -26,7 +26,7 @@ export const requireAuth = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
     req.user = decoded;
     next();
   } catch (err) {
@@ -37,7 +37,7 @@ export const requireAuth = (req, res, next) => {
 
 /**
  * API Auth Middleware:
- * For JSON endpoints like /save-project, /save-pdf, /runCode.
+ * For JSON endpoints like /save-project, /save-pdf, /runCode, /run, /api/me.
  * Returns standard 401 Unauthorized JSON responses.
  */
 export const requireApiAuth = (req, res, next) => {
@@ -47,7 +47,7 @@ export const requireApiAuth = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
     req.user = decoded;
     next();
   } catch (err) {
@@ -63,7 +63,7 @@ export const optionalAuth = (req, res, next) => {
   const token = extractToken(req);
   if (token) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
       req.user = decoded;
     } catch (_) {
       // Silent pass for optional auth
