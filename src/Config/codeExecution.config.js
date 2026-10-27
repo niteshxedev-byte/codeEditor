@@ -17,13 +17,17 @@ const EXEC_TIMEOUT_MS = 5000; // 5 seconds strict wall-clock timeout
 const MAX_OUTPUT_BYTES = 100 * 1024; // 100 KB output limit
 
 // Explicit safe environment allowlist: strictly omit parent secrets & tokens
-const SAFE_ENV = {
-  PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+const cleanPath = (process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+  .split(":")
+  .filter((p) => p && !p.startsWith("/home/"))
+  .join(":") || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
+const SAFE_ENV = Object.freeze({
+  PATH: cleanPath,
   HOME: "/tmp",
-  LANG: "C.UTF-8",
-  LC_ALL: "C.UTF-8",
   TMPDIR: "/tmp",
-};
+  LANG: "C.UTF-8",
+});
 
 // Concurrency tracking: 1 run per user, global max configurable
 const activeUserRuns = new Set();
