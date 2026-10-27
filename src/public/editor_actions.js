@@ -492,41 +492,101 @@
         consoleOutput.scrollTop = consoleOutput.scrollHeight;
       };
 
-      const handleActions = (actions) => {
-        if (actions && Array.isArray(actions) && actions.length > 0) {
-          actions.forEach(action => {
-            if (action.type === 'create_folder' && window.agentActions) {
-              window.agentActions.createFolder(action.name, action.parentFolder);
-              if (!createdFolders.includes(action.name)) createdFolders.push(action.name);
-            } else if (action.type === 'create_file' && window.agentActions) {
-              const fId = window.agentActions.createFile(action.name, action.content, action.folderName);
-              if (!firstCreatedFileId && fId) firstCreatedFileId = fId;
-              if (!createdFiles.includes(action.name)) createdFiles.push(action.name);
-            } else if (action.type === 'write_code' && window.agentActions) {
-              window.agentActions.writeCode(action.name, action.content);
-              if (!createdFiles.includes(action.name)) createdFiles.push(action.name);
-            }
-          });
-
-          if (firstCreatedFileId && typeof switchToFile === 'function') {
-            switchToFile(firstCreatedFileId);
+      const applyActions = (actions) => {
+        if (!actions || !Array.isArray(actions) || actions.length === 0) return;
+        actions.forEach(action => {
+          if (action.type === 'create_folder' && window.agentActions) {
+            window.agentActions.createFolder(action.name, action.parentFolder);
+            if (!createdFolders.includes(action.name)) createdFolders.push(action.name);
+          } else if (action.type === 'create_file' && window.agentActions) {
+            const fId = window.agentActions.createFile(action.name, action.content, action.folderName);
+            if (!firstCreatedFileId && fId) firstCreatedFileId = fId;
+            if (!createdFiles.includes(action.name)) createdFiles.push(action.name);
+          } else if (action.type === 'write_code' && window.agentActions) {
+            window.agentActions.writeCode(action.name, action.content);
+            if (!createdFiles.includes(action.name)) createdFiles.push(action.name);
           }
+        });
 
-          if (createdFolders.length > 0 || createdFiles.length > 0) {
-            workspaceBadgeHtml = `
-              <div style="margin-top:8px; padding:7px 10px; background:#08080a; border:1px solid #1F1F1F; border-radius:4px; font-family:'JetBrains Mono', monospace; font-size:11px;">
-                <div style="color:#2563eb; font-weight:600; display:flex; align-items:center; gap:6px;">
-                  <i class="ri-folder-add-line"></i>
-                  <span>Workspace Files Created:</span>
-                </div>
-                <div style="margin-top:3px; color:#9ca3af; font-size:10.5px; line-height:1.4;">
-                  ${createdFolders.length > 0 ? `<div>📁 Folder: <span style="color:#e4e4e7;">${createdFolders.join(', ')}</span></div>` : ''}
-                  ${createdFiles.length > 0 ? `<div>📄 Files (${createdFiles.length}): <span style="color:#60a5fa;">${createdFiles.join(', ')}</span></div>` : ''}
-                </div>
-              </div>
-            `;
-          }
+        if (firstCreatedFileId && typeof switchToFile === 'function') {
+          switchToFile(firstCreatedFileId);
         }
+      };
+
+      const handleActions = (actions) => {
+        if (!actions || !Array.isArray(actions) || actions.length === 0) return;
+
+        const actionItems = actions.map(act => {
+          if (act.type === 'create_folder') {
+            return `<li>📁 Create folder <code>${escapeHtml(act.name)}</code></li>`;
+          } else if (act.type === 'create_file') {
+            return `<li>📄 Create file <code>${escapeHtml(act.name)}</code>${act.folderName ? ` in <em>${escapeHtml(act.folderName)}</em>` : ''}</li>`;
+          } else if (act.type === 'write_code') {
+            return `<li>✏️ Update file <code>${escapeHtml(act.name)}</code></li>`;
+          }
+          return `<li>${escapeHtml(act.type || 'Action')}: ${escapeHtml(act.name || '')}</li>`;
+        }).join('');
+
+        const confirmId = 'ai-actions-' + Math.random().toString(36).substring(2, 9);
+        workspaceBadgeHtml = `
+          <div id="${confirmId}" style="margin-top:10px; padding:10px 12px; background:#121214; border:1px solid #f59e0b; border-radius:6px; font-family:'JetBrains Mono', monospace; font-size:11px;">
+            <div style="color:#f59e0b; font-weight:600; display:flex; align-items:center; gap:6px; font-size:12px;">
+              <i class="ri-shield-keyhole-line"></i>
+              <span>AI Proposed Workspace Modifications (${actions.length})</span>
+            </div>
+            <p style="margin:5px 0; color:#9ca3af; font-size:11px; font-family:sans-serif;">
+              For security, AI code modifications require your explicit approval before modifying workspace files:
+            </p>
+            <ul style="margin:6px 0 10px 18px; padding:0; color:#e4e4e7; font-size:11px; line-height:1.6;">
+              ${actionItems}
+            </ul>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" class="btn-apply-actions" style="padding:4px 12px; background:#2563eb; color:#fff; border:none; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:4px;">
+                <i class="ri-check-line"></i> Apply Changes
+              </button>
+              <button type="button" class="btn-discard-actions" style="padding:4px 12px; background:#27272a; color:#a1a1aa; border:1px solid #3f3f46; border-radius:4px; font-size:11px; cursor:pointer;">
+                <i class="ri-close-line"></i> Discard
+              </button>
+            </div>
+          </div>
+        `;
+
+        updateBubble();
+
+        setTimeout(() => {
+          const container = document.getElementById(confirmId);
+          if (!container) return;
+          const applyBtn = container.querySelector('.btn-apply-actions');
+          const discardBtn = container.querySelector('.btn-discard-actions');
+
+          if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+              applyActions(actions);
+              container.style.borderColor = '#10b981';
+              container.innerHTML = `
+                <div style="color:#10b981; font-weight:600; display:flex; align-items:center; gap:6px;">
+                  <i class="ri-checkbox-circle-line"></i>
+                  <span>Workspace Changes Applied (${actions.length})</span>
+                </div>
+                <div style="margin-top:4px; color:#9ca3af; font-size:10.5px;">
+                  ${createdFolders.length > 0 ? `📁 Folders: ${escapeHtml(createdFolders.join(', '))}<br/>` : ''}
+                  ${createdFiles.length > 0 ? `📄 Files: ${escapeHtml(createdFiles.join(', '))}` : ''}
+                </div>
+              `;
+            });
+          }
+
+          if (discardBtn) {
+            discardBtn.addEventListener('click', () => {
+              container.style.borderColor = '#3f3f46';
+              container.innerHTML = `
+                <div style="color:#71717a; font-style:italic;">
+                  <i class="ri-close-circle-line"></i> Proposed changes discarded. Workspace was not modified.
+                </div>
+              `;
+            });
+          }
+        }, 50);
       };
 
       if (useSocket && window.socket) {

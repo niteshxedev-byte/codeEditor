@@ -14,6 +14,7 @@ import { randomBytes } from "crypto";
 import Project from "../../Models/userModels/projectsModel.js/projectModel.js";
 import Pdf from "../../Models/userModels/pdfModels.js";
 import { runTeacherAgent, getAvailableModels } from "../../Services/langchainAgent.service.js";
+import { checkAndIncrementAiQuota } from "../../Services/quota.service.js";
 import { requireApiAuth as authenticate, requireAuth } from "../../Middlewares/auth.middleware.js";
 import { executionLimiter, aiLimiter } from "../../Middlewares/rateLimiter.middleware.js";
 import {
@@ -352,8 +353,24 @@ router.post("/save-pdf", authenticate, handleUploadSingle("pdfFile"), async (req
 router.post("/ask-ai", authenticate, aiLimiter, async (req, res) => {
   try {
     const { prompt, model, fileSystem, activeFileId, code, language } = req.body;
-    if (!prompt) {
-      return res.status(400).json({ response: "Prompt is required." });
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res.status(400).json({ error: "Prompt must be a non-empty string.", response: "Prompt must be a non-empty string." });
+    }
+
+    if (prompt.length > 4000) {
+      return res.status(400).json({
+        error: "Prompt exceeds maximum allowed length of 4000 characters.",
+        response: "Prompt exceeds maximum allowed length of 4000 characters."
+      });
+    }
+
+    const quota = checkAndIncrementAiQuota(req.user?.userId);
+    if (!quota.allowed) {
+      return res.status(429).json({
+        error: `Daily AI request quota exceeded (${quota.limit} requests/day). Please try again tomorrow.`,
+        status: "QuotaExceeded",
+        response: `Daily AI request quota exceeded (${quota.limit} requests/day). Please try again tomorrow.`
+      });
     }
 
     const result = await runTeacherAgent({
@@ -368,7 +385,8 @@ router.post("/ask-ai", authenticate, aiLimiter, async (req, res) => {
     return res.json({
       response: result.response,
       actions: result.actions || [],
-      model: result.model
+      model: result.model,
+      quotaRemaining: quota.remaining
     });
   } catch (error) {
     console.error("Error in /ask-ai route:", error.message);

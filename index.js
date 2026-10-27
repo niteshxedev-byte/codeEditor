@@ -17,6 +17,7 @@ import dashbordRoute from "./src/Routes/dashbordRoutes/dashbordRoutes.js";
 import editorRoute from "./src/Routes/editorRoutes/editorRoutes.js";
 import connectDB from './src/Config/db.connection.js';
 import { runTeacherAgent } from "./src/Services/langchainAgent.service.js";
+import { checkAndIncrementAiQuota } from "./src/Services/quota.service.js";
 
 dotenv.config();
 
@@ -170,12 +171,25 @@ io.on('connection', (socket) => {
 
             const { prompt, model, fileSystem, activeFileId, code, language } = data;
 
-            // Reject oversized payloads (> 100 KB)
-            if (typeof prompt === 'string' && prompt.length > 100 * 1024) {
-                return socket.emit('ai_error', { message: 'Payload rejected: prompt exceeds 100 KB limit.' });
+            // Validate prompt presence and length (max 4000 characters)
+            if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+                return socket.emit('ai_error', { message: 'Prompt must be a non-empty string.' });
             }
+            if (prompt.length > 4000) {
+                return socket.emit('ai_error', { message: 'Prompt exceeds maximum allowed length of 4000 characters.' });
+            }
+
+            // Reject oversized code payloads (> 100 KB)
             if (typeof code === 'string' && code.length > 100 * 1024) {
                 return socket.emit('ai_error', { message: 'Payload rejected: code exceeds 100 KB limit.' });
+            }
+
+            // Enforce per-user daily AI quota (50 requests/day)
+            const quota = checkAndIncrementAiQuota(socket.user?.userId);
+            if (!quota.allowed) {
+                return socket.emit('ai_error', {
+                    message: `Daily AI request quota exceeded (${quota.limit} requests/day). Please try again tomorrow.`
+                });
             }
 
             const emitter = {
