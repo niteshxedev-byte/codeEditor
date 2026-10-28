@@ -5,6 +5,7 @@
 A self-hosted, browser-based code editor built with Node.js/Express, Monaco Editor, Socket.IO, LangChain, MongoDB, and Docker. It combines a VS Code-like editing experience with AI assistance and local code execution.
 
 > Repository: https://github.com/niteshxedev-byte/codeEditor
+> CodeExecutionEngine :https
 
 ---
 
@@ -49,8 +50,4 @@ Browser UI
 Express.js + Socket.IO
   ├── Auth / API routes
   ├── AI service via LangChain
-  ├── Local code execution service
   └── MongoDB via Mongoose
-        │
-        ▼
-AI Providers: Google / OpenAI / Ollama

@@ -41,7 +41,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.js"></script>
 
   <!-- Clean Theme Stylesheet -->
-  <link rel="stylesheet" href="/style_codeeditor.css?v=6" />
+  <link rel="stylesheet" href="/style_codeeditor.css?v=8" />
 
   <style>
     /* Panel visibility helper — driven by the Ctrl+B / Ctrl+M / Ctrl+` toggles */
@@ -51,7 +51,18 @@
   </style>
 
   <script>
-    /* Immediate lightweight menu toggle support before external bundles finish loading */
+    /* Immediate global utilities before external bundles finish loading */
+    window.escapeHtml = window.escapeHtml || function (str) {
+      if (str === null || str === undefined) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    };
+
+    /* Immediate lightweight menu toggle support */
     window.toggleIdeMenu = window.toggleIdeMenu || function (e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
       var m = document.getElementById("ide-menu-dropdown");
@@ -191,39 +202,36 @@
       </div>
 
       <div class="brand-section">
-        <a href="/DashboardCodeEditor" class="editor-title" title="Return to Dashboard">
-          <i class="ri-terminal-box-line"></i>
+        <a href="/DashboardCodeEditor" class="editor-title" title="Return to Workspaces Dashboard">
+          <i class="ri-terminal-box-line brand-icon"></i>
           <span>pce/editor</span>
         </a>
-        <span class="workspace-badge">workspace-1</span>
+        <span class="workspace-badge" id="current-workspace-badge">workspace-1</span>
+        <span id="save-status-pill" class="save-status-pill saved" title="Auto-save status">
+          <i class="ri-check-line"></i> <span>saved</span>
+        </span>
       </div>
     </div>
 
     <!-- Navigation buttons: ONLY Language Change and Run Button -->
     <div class="header-controls">
-      <!-- Language Selector -->
+      <!-- Language Selector (Strictly Codebox Runtimes) -->
       <select class="select-box" id="language" title="Programming Language">
-        <option value="">Select Language</option>
-        <% if (typeof languages !=="undefined" && languages.length> 0) { %>
-          <% languages.forEach(lang=> { %>
-            <option value="<%= lang.id %>" <%=lang.id===1 ? "selected" : "" %>>
+        <% if (typeof languages !== "undefined" && languages.length > 0) { %>
+          <% languages.forEach(lang => { %>
+            <option value="<%= lang.id %>" <%= (lang.id === 63 || lang.id === 1) ? "selected" : "" %>>
               <%= lang.name %>
             </option>
-            <% }) %>
-              <% } else { %>
-                <option value="1" selected>JavaScript (Node.js)</option>
-                <option value="2">TypeScript (ts-node)</option>
-                <option value="3">Python (python3)</option>
-                <option value="4">C++ (GCC, C++17)</option>
-                <option value="5">C (GCC)</option>
-                <option value="6">Java (OpenJDK)</option>
-                <option value="7">Rust (rustc)</option>
-                <option value="8">Go (go run)</option>
-                <option value="10">PHP (php)</option>
-                <option value="11">Ruby (ruby)</option>
-                <option value="14">SQL (SQLite)</option>
-                <option value="15">Bash</option>
-                <% } %>
+          <% }) %>
+        <% } else { %>
+          <option value="63" selected>JavaScript (Node.js)</option>
+          <option value="71">Python (3.x)</option>
+          <option value="54">C++ (G++)</option>
+          <option value="50">C (GCC)</option>
+          <option value="62">Java (OpenJDK)</option>
+          <option value="73">Rust (rustc)</option>
+          <option value="46">Bash</option>
+        <% } %>
       </select>
 
       <!-- Run Button -->
@@ -281,11 +289,10 @@
     <div id="console-wrapper" class="pce-hidden">
       <div class="console-header">
         <span class="console-title">
-          <i class="ri-sparkling-line" style="color:#2563eb"></i> Teacher Agent
+          <i class="ri-sparkling-line" style="color:var(--accent-blue)"></i> Teacher Agent
         </span>
         <div style="display:flex; align-items:center; gap:6px;">
-          <select id="ai-model-select" class="select-box"
-            style="height:24px; font-size:11px; padding:0 6px; width:auto; max-width:160px; background:#000; border-color:#27272a; color:#fff;"
+          <select id="ai-model-select" class="select-box ai-model-select"
             title="Select Local or Cloud Ollama Model">
             <% if (typeof aiModels !=="undefined" && aiModels.length> 0) { %>
               <% aiModels.forEach((m, idx)=> { %>
@@ -293,34 +300,31 @@
                   <%= m.name %>
                 </option>
                 <% }) %>
-                  <% } else { %>
-                    <option value="llama3.2:1b" selected>llama3.2:1b (Local)</option>
-                    <option value="qwen3.5:0.8b">qwen3.5:0.8b (Local)</option>
-                    <option value="gemma4:31b">gemma4:31b (Cloud - Free)</option>
-                    <option value="gpt-oss:20b">gpt-oss:20b (Cloud - Free)</option>
-                    <% } %>
+            <% } else { %>
+              <option value="llama3.2:1b" selected>llama3.2:1b (Local)</option>
+              <option value="qwen3.5:0.8b">qwen3.5:0.8b (Local)</option>
+              <option value="gemma4:31b">gemma4:31b (Cloud - Free)</option>
+              <option value="gpt-oss:20b">gpt-oss:20b (Cloud - Free)</option>
+            <% } %>
           </select>
-          <button type="button" onclick="refreshModels()"
-            style="background:none; border:none; color:#6b7280; cursor:pointer; padding:2px; font-size:12px;"
+          <button type="button" onclick="refreshModels()" class="btn-icon"
             title="Refresh local & cloud models">
             <i class="ri-refresh-line"></i>
           </button>
-          <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color:#22c55e;">
-            ●
-          </span>
+          <span class="ai-live-indicator" title="AI Agent service ready">●</span>
         </div>
       </div>
 
       <div id="console-output" class="output_ai">
         <div class="chat-bubble-agent">
           <strong>Agent ready.</strong>
-          <p style="margin-top: 4px; color: #a1a1aa;">
+          <p style="margin-top: 4px; color: var(--text-body);">
             Ask questions, debug errors, or generate boilerplate code.
           </p>
         </div>
       </div>
 
-      <!-- Fixed: single form, no nested forms, no nested buttons -->
+      <!-- Single form, no nested forms -->
       <form id="prompt" autocomplete="off">
         <input type="text" name="prompt" id="console-input" autocomplete="off" placeholder="Ask AI agent..." />
         <label for="pdf" id="file-label" title="Attach document">
@@ -338,16 +342,22 @@
   <div id="vscode-terminal" class="pce-hidden">
     <div class="vscode-terminal-tabs">
       <div class="terminal-tab-group">
-        <span class="tab active">OUTPUT</span>
-        <span class="tab">PROBLEMS</span>
-        <span class="tab">DEBUG CONSOLE</span>
+        <button type="button" id="tab-terminal-output" class="tab active" onclick="switchTerminalTab('output')">
+          <i class="ri-terminal-box-line"></i> OUTPUT
+        </button>
+        <button type="button" id="tab-terminal-stdin" class="tab" onclick="switchTerminalTab('stdin')">
+          <i class="ri-keyboard-line"></i> STDIN INPUT
+        </button>
+        <button type="button" id="tab-terminal-problems" class="tab" onclick="switchTerminalTab('problems')">
+          <i class="ri-alert-line"></i> PROBLEMS
+        </button>
       </div>
 
       <div class="terminal-actions">
         <span id="COADING_LANGUAGE">
           <i class="ri-terminal-line"></i> JAVASCRIPT (NODE.JS)
         </span>
-        <button onclick="clearConsole()" class="btn-tool" style="height:22px; padding:0 8px; font-size:11px;"
+        <button onclick="clearConsole()" class="btn-tool" style="height:24px; padding:0 8px; font-size:11px;"
           title="Clear console">
           clear
         </button>
@@ -356,6 +366,14 @@
 
     <div id="terminal-screen">
       <div class="terminal-line terminal-dim">Terminal ready. Click Run or press Ctrl+Enter to execute.</div>
+    </div>
+
+    <div id="terminal-stdin-wrapper" class="pce-hidden terminal-stdin-wrapper">
+      <div class="terminal-stdin-header">
+        <span class="terminal-stdin-label"><i class="ri-keyboard-line"></i> Standard Input (stdin):</span>
+        <span class="terminal-stdin-hint">Passed to script at runtime (e.g. input(), cin, Scanner)</span>
+      </div>
+      <textarea id="terminal-stdin-input" class="terminal-stdin-textarea" placeholder="Enter standard input data passed to your script here..." spellcheck="false"></textarea>
     </div>
   </div>
 
@@ -408,9 +426,9 @@
   <div id="ide-toast-container" class="ide-toast-container" aria-live="polite"></div>
 
   <!-- Editor Core Logic & In-App Dialog System -->
-  <script src="/editor.js?v=8"></script>
+  <script src="/editor.js?v=12"></script>
   <!-- Editor Toolbar, Code Execution, AI Streaming, & Workspace Exports -->
-  <script src="/editor_actions.js?v=9" defer></script>
+  <script src="/editor_actions.js?v=12" defer></script>
 </body>
 
 </html>

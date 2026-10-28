@@ -1,5 +1,19 @@
 // Enhanced Monaco Editor & File Explorer Logic with Local Storage Auto-Save
 
+/**
+ * Global HTML entity sanitizer — ensures XSS-safe file tabs, tree rendering, and agent output
+ */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+window.escapeHtml = escapeHtml;
+
 let editor = window.editor = null;
 let models = window.models = {}; // Store monaco models by file id
 
@@ -200,6 +214,34 @@ window.restoreWorkspaceFromLocalStorage = restoreWorkspaceFromLocalStorage;
 window.addEventListener("DOMContentLoaded", () => {
   if (typeof require !== "undefined") {
     require(["vs/editor/editor.main"], async function () {
+      // Define cohesive theme matching PCE Design Tokens (#090b10 canvas, #12151f lines, #3b82f6 cursor)
+      monaco.editor.defineTheme('pce-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: '', background: '090b10', foreground: 'e5e7eb' },
+          { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },
+          { token: 'keyword', foreground: '3b82f6' },
+          { token: 'string', foreground: '10b981' },
+          { token: 'number', foreground: '06b6d4' },
+          { token: 'type', foreground: '818cf8' },
+        ],
+        colors: {
+          'editor.background': '#090b10',
+          'editor.foreground': '#e5e7eb',
+          'editor.lineHighlightBackground': '#12151f',
+          'editorLineNumber.foreground': '#4b5563',
+          'editorLineNumber.activeForeground': '#9ca3af',
+          'editorGutter.background': '#090b10',
+          'editorCursor.foreground': '#3b82f6',
+          'editor.selectionBackground': 'rgba(59, 130, 246, 0.28)',
+          'editor.inactiveSelectionBackground': 'rgba(59, 130, 246, 0.15)',
+          'scrollbarSlider.background': 'rgba(255, 255, 255, 0.08)',
+          'scrollbarSlider.hoverBackground': 'rgba(255, 255, 255, 0.16)',
+          'scrollbarSlider.activeBackground': 'rgba(59, 130, 246, 0.4)',
+        }
+      });
+
       const params = new URLSearchParams(window.location.search);
       const projectId = params.get("projectId") || params.get("id");
       const projectUrl = params.get("projectUrl");
@@ -217,7 +259,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
         editor = monaco.editor.create(document.getElementById("editor"), {
           model: models[activeFileId] || null,
-          theme: "vs-dark",
+          theme: "pce-dark",
           automaticLayout: true,
           fontSize: 15,
           minimap: { enabled: true },
@@ -242,7 +284,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
         editor = monaco.editor.create(document.getElementById("editor"), {
           model: models[activeFileId] || null,
-          theme: "vs-dark",
+          theme: "pce-dark",
           automaticLayout: true,
           fontSize: 15,
           minimap: { enabled: true },
@@ -778,23 +820,16 @@ function syncLanguageDropdown(filename) {
   if (!select) return;
 
   const ext = filename.split('.').pop().toLowerCase();
-  // Sequential IDs (1-15) matching SUPPORTED_LANGUAGES and local compilers
+  // Codebox supported runtime IDs (JavaScript:63, Python:71, C++:54, C:50, Java:62, Rust:73, Bash:46)
   const extToLangId = {
-    'js': '1', 'mjs': '1', 'cjs': '1',
-    'ts': '2',
-    'py': '3',
-    'cpp': '4', 'hpp': '4', 'cc': '4', 'cxx': '4', 'h': '4',
-    'c': '5',
-    'java': '6',
-    'rs': '7',
-    'go': '8',
-    'cs': '9',
-    'php': '10',
-    'rb': '11',
-    'swift': '12',
-    'kt': '13', 'kts': '13',
-    'sql': '14',
-    'sh': '15', 'bash': '15',
+    'js': '63', 'mjs': '63', 'cjs': '63',
+    'ts': '63',
+    'py': '71',
+    'cpp': '54', 'hpp': '54', 'cc': '54', 'cxx': '54', 'h': '54',
+    'c': '50',
+    'java': '62',
+    'rs': '73',
+    'sh': '46', 'bash': '46',
   };
 
   const targetId = extToLangId[ext];

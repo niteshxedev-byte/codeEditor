@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import dotenv from 'dotenv';
 import path from "path";
@@ -16,6 +17,7 @@ import dashbordRoute from "./src/Routes/dashbordRoutes/dashbordRoutes.js";
 import editorRoute from "./src/Routes/editorRoutes/editorRoutes.js";
 import connectDB from './src/Config/db.connection.js';
 import { runTeacherAgent } from "./src/Services/langchainAgent.service.js";
+import { checkAiSocketRateLimit } from "./src/Middlewares/rateLimiter.middleware.js";
 
 dotenv.config();
 
@@ -102,6 +104,15 @@ app.use((req, res, next) => {
 io.on('connection', (socket) => {
     socket.on('ask-ai', async (data) => {
         try {
+            const socketUserIdentifier = socket.user?.userId || socket.handshake.address;
+            const rateLimitCheck = checkAiSocketRateLimit(socketUserIdentifier);
+            if (!rateLimitCheck.allowed) {
+                socket.emit('ai_error', {
+                    message: `Rate limit exceeded. Please wait ${rateLimitCheck.retryAfterSeconds}s before sending another prompt.`
+                });
+                return;
+            }
+
             const { prompt, model, fileSystem, activeFileId, code, language } = data;
 
             const emitter = {

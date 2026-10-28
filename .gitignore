@@ -6,5 +6,7 @@ node_modules/
 *.log
 scratch/
 src/public/uploads/
+Codebox/
+findings.json
 
 

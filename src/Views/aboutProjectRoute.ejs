@@ -4,427 +4,1797 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Code Editor — Architecture & Features</title>
+    <title>About Personal Code Editor — Architecture, Codebox Sandbox & AI</title>
     <meta name="description"
-        content="Personal Code Editor — Cloud AI integration, Monaco Editor, Judge0 execution, and MongoDB workspace synchronization.">
+        content="Personal Code Editor — Self-hosted browser IDE powered by Monaco Editor, Codebox container sandboxing, hybrid local/cloud AI agents, and MongoDB workspace storage.">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        void: '#000000',
-                        surface: '#0D0D0D',
-                        edge: '#1F1F1F',
-                        blue: '#2563EB',
-                        snow: '#FFFFFF',
-                        muted: '#6B7280',
-                        ok: '#22C55E',
-                    },
-                    fontFamily: {
-                        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-                    },
-                    fontSize: {
-                        '2xs': ['0.68rem', { lineHeight: '1rem' }],
-                    },
-                }
-            }
-        }
-    </script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
 
     <style>
-        /* Cursor blink */
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
+        /* ─── Design Tokens & Theme Variables ─────────────────────────────────────── */
+        :root {
+            --bg-canvas: #090b10;
+            --bg-surface: #10131b;
+            --bg-elevated: #161b26;
+            --bg-card: #12151f;
+            --bg-card-hover: #181d2a;
+            --bg-code: #06070a;
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --border-strong: rgba(255, 255, 255, 0.16);
+            --border-accent: rgba(59, 130, 246, 0.4);
+            --accent-blue: #3b82f6;
+            --accent-blue-hover: #2563eb;
+            --accent-blue-glow: rgba(59, 130, 246, 0.2);
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --text-heading: #f9fafb;
+            --text-body: #9ca3af;
+            --text-muted: #6b7280;
+            --text-code: #e5e7eb;
+            --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+            --radius-sm: 4px;
+            --radius-md: 6px;
+            --radius-lg: 10px;
+            --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        #cursor {
-            display: inline-block;
-            width: 8px;
-            height: 1.05em;
-            background: #2563EB;
-            margin-left: 2px;
-            vertical-align: text-bottom;
-            animation: blink 1s step-end infinite;
-        }
-
-        /* Hairline Grid */
-        .grid-hairline {
-            display: grid;
-            gap: 1px;
-            background-color: #1F1F1F;
-        }
-
-        /* Focus visible accessibility */
-        :focus-visible {
-            outline: 2px solid #2563EB;
-            outline-offset: 3px;
-            border-radius: 2px;
+        /* ─── Base Reset & Global Styles ────────────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         html {
             scroll-behavior: smooth;
+            color-scheme: dark;
+        }
+
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-body);
+            font-family: var(--font-display);
+            font-size: 15px;
+            line-height: 1.6;
+            letter-spacing: -0.01em;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow-x: hidden;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        code,
+        pre,
+        .font-mono {
+            font-family: var(--font-mono);
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--accent-blue);
+            outline-offset: 3px;
+            border-radius: var(--radius-sm);
         }
 
         /* Custom Scrollbar */
         ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-canvas);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #1f2533;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-blue);
+        }
+
+        /* ─── Layout Containers ─────────────────────────────────────────────────── */
+        .container {
+            width: 100%;
+            max-width: 1120px;
+            margin-left: auto;
+            margin-right: auto;
+            padding-left: 24px;
+            padding-right: 24px;
+        }
+
+        /* ─── Navigation Header ─────────────────────────────────────────────────── */
+        .site-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            z-index: 100;
+            background: rgba(9, 11, 16, 0.85);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .header-inner {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .brand-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-heading);
+            letter-spacing: -0.02em;
+        }
+
+        .brand-badge {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.12);
+            color: var(--accent-blue);
+            border: 1px solid var(--border-accent);
+            padding: 2px 7px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .nav-links {
+            display: none;
+            align-items: center;
+            gap: 24px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        @media (min-width: 768px) {
+            .nav-links {
+                display: flex;
+            }
+        }
+
+        .nav-link:hover {
+            color: var(--text-heading);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-subtle {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 13px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-body);
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-surface);
+        }
+
+        .btn-subtle:hover {
+            color: var(--text-heading);
+            border-color: var(--border-strong);
+            background: var(--bg-elevated);
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+            color: #ffffff;
+            background: var(--accent-blue);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 12px var(--accent-blue-glow);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-blue-hover);
+            transform: translateY(-1px);
+        }
+
+        /* ─── Hero Section ──────────────────────────────────────────────────────── */
+        .hero-section {
+            padding-top: 130px;
+            padding-bottom: 60px;
+        }
+
+        .tag-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 9999px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--accent-cyan);
+            margin-bottom: 20px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
+            box-shadow: 0 0 8px var(--accent-emerald);
+            animation: pulse-dot 2.5s infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.85);
+            }
+        }
+
+        .hero-title {
+            font-size: clamp(2rem, 1.2rem + 3.2vw, 3.6rem);
+            font-weight: 600;
+            line-height: 1.15;
+            color: var(--text-heading);
+            letter-spacing: -0.03em;
+            max-width: 860px;
+            margin-bottom: 20px;
+        }
+
+        .hero-title .gradient-text {
+            background: linear-gradient(135deg, #ffffff 30%, #93c5fd 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-lead {
+            font-size: clamp(1rem, 0.95rem + 0.3vw, 1.15rem);
+            line-height: 1.6;
+            color: var(--text-body);
+            max-width: 680px;
+            margin-bottom: 32px;
+        }
+
+        .hero-cta-group {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 48px;
+        }
+
+        /* ─── System Health Banner ──────────────────────────────────────────────── */
+        .health-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1px;
+            background: var(--border-subtle);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin-bottom: 40px;
+        }
+
+        .health-item {
+            background: var(--bg-surface);
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .health-label {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .health-value {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-heading);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .health-indicator {
             width: 6px;
             height: 6px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
         }
-        ::-webkit-scrollbar-track {
+
+        /* ─── Section Shared Styles ─────────────────────────────────────────────── */
+        .section-block {
+            padding-top: 72px;
+            padding-bottom: 72px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .section-header {
+            margin-bottom: 36px;
+        }
+
+        .section-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .section-title {
+            font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2.1rem);
+            font-weight: 600;
+            color: var(--text-heading);
+            letter-spacing: -0.025em;
+            line-height: 1.25;
+            margin-bottom: 12px;
+        }
+
+        .section-desc {
+            font-size: 15px;
+            color: var(--text-body);
+            max-width: 640px;
+            line-height: 1.6;
+        }
+
+        /* ─── Interactive Architecture Inspector ────────────────────────────────── */
+        .inspector-layout {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            background: var(--bg-surface);
+            padding: 24px;
+        }
+
+        @media (min-width: 900px) {
+            .inspector-layout {
+                grid-template-columns: 280px 1fr;
+                gap: 28px;
+            }
+        }
+
+        .tab-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .tab-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            color: var(--text-body);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            text-align: left;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .tab-btn:hover {
+            background: var(--bg-elevated);
+            color: var(--text-heading);
+            border-color: var(--border-subtle);
+        }
+
+        .tab-btn.active {
+            background: var(--bg-elevated);
+            color: var(--accent-blue);
+            border-color: var(--border-accent);
+            box-shadow: 0 0 16px rgba(59, 130, 246, 0.1);
+        }
+
+        .tab-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+        }
+
+        .tab-btn.active .tab-tag {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .inspector-content {
+            background: var(--bg-code);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            min-height: 320px;
+        }
+
+        .inspector-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            color: var(--accent-cyan);
+            border: 1px solid var(--border-subtle);
+            width: fit-content;
+        }
+
+        .inspector-headline {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-heading);
+            letter-spacing: -0.015em;
+        }
+
+        .inspector-body {
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text-body);
+        }
+
+        .code-snippet {
             background: #000000;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-code);
+            overflow-x: auto;
         }
-        ::-webkit-scrollbar-thumb {
-            background: #1F1F1F;
-            border-radius: 3px;
+
+        .code-keyword {
+            color: #f472b6;
         }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #2563EB;
+
+        .code-fn {
+            color: #60a5fa;
+        }
+
+        .code-str {
+            color: #34d399;
+        }
+
+        .code-comment {
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        /* ─── Feature Matrix Grid ───────────────────────────────────────────────── */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            transition: var(--transition);
+        }
+
+        .feature-card:hover {
+            border-color: var(--border-strong);
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+        }
+
+        .feature-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .feature-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-heading);
+            font-family: var(--font-mono);
+            letter-spacing: -0.01em;
+        }
+
+        .feature-icon-badge {
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--accent-blue);
+        }
+
+        .feature-desc {
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text-body);
+        }
+
+        .feature-meta {
+            margin-top: auto;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tech-pill {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+        }
+
+        /* ─── Local AI Guide (Ollama) ───────────────────────────────────────────── */
+        .guide-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+        }
+
+        .guide-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            margin-top: 24px;
+        }
+
+        .step-card {
+            background: var(--bg-code);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .step-number {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+        }
+
+        .step-title {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-heading);
+        }
+
+        .terminal-block {
+            background: #000000;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #38bdf8;
+            user-select: all;
+            overflow-x: auto;
+        }
+
+        .step-note {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* ─── Call to Action Banner ─────────────────────────────────────────────── */
+        .cta-banner {
+            background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: clamp(28px, 4vw, 48px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 24px;
+        }
+
+        @media (min-width: 768px) {
+            .cta-banner {
+                flex-direction: row;
+                align-items: center;
+            }
+        }
+
+        .cta-heading {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-heading);
+            letter-spacing: -0.02em;
+            margin-bottom: 6px;
+        }
+
+        .cta-text {
+            font-size: 14px;
+            color: var(--text-body);
+            max-width: 520px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        /* ─── Footer ────────────────────────────────────────────────────────────── */
+        .site-footer {
+            margin-top: auto;
+            border-top: 1px solid var(--border-subtle);
+            background: var(--bg-canvas);
+            padding: 24px 0;
+        }
+
+        .footer-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        @media (min-width: 640px) {
+            .footer-inner {
+                flex-direction: row;
+            }
+        }
+
+        .footer-links {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .footer-links a:hover {
+            color: var(--text-heading);
+        }
+
+        /* ─── How It Works Diagram Section ───────────────────────────────────────── */
+        .how-it-works-block {
+            margin-top: 36px;
+            margin-bottom: 40px;
+        }
+
+        .how-it-works-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .how-it-works-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-heading);
+            letter-spacing: -0.02em;
+        }
+
+        .how-it-works-card {
+            background: var(--bg-code);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+            position: relative;
+        }
+
+        .how-it-works-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: rgba(18, 21, 31, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .how-it-works-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .diagram-window-dots {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .diagram-window-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .diagram-window-dot.red { background: #ef4444; }
+        .diagram-window-dot.yellow { background: #f59e0b; }
+        .diagram-window-dot.green { background: #10b981; }
+
+        .diagram-caption {
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+            color: var(--text-muted);
+            margin-left: 6px;
+        }
+
+        .btn-copy-diagram {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-body);
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+            padding: 5px 11px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: var(--transition);
+        }
+
+        .btn-copy-diagram:hover {
+            color: var(--text-heading);
+            background: var(--bg-card-hover);
+            border-color: var(--border-strong);
+        }
+
+        .diagram-mode-tabs {
+            display: inline-flex;
+            align-items: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 3px;
+            gap: 4px;
+        }
+
+        .diagram-mode-tab {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            font-family: var(--font-display);
+            font-size: 12px;
+            font-weight: 500;
+            padding: 5px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .diagram-mode-tab:hover {
+            color: var(--text-heading);
+            background: var(--bg-elevated);
+        }
+
+        .diagram-mode-tab.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue-hover);
+            color: #ffffff;
+            box-shadow: 0 2px 8px var(--accent-blue-glow);
+        }
+
+        .how-it-works-diagram {
+            padding: 24px 28px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+
+        .how-it-works-diagram pre {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--text-heading);
+            margin: 0;
+            white-space: pre;
+            user-select: text;
+        }
+
+        /* ─── Visual Architecture Flowchart ─────────────────────────────────────── */
+        .visual-arch-container {
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--bg-code);
+            gap: 0;
+            overflow-x: auto;
+        }
+
+        .arch-row-linear {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            max-width: 960px;
+        }
+
+        .arch-node-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            text-align: center;
+            flex: 1;
+            min-width: 140px;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .arch-node-card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.16);
+        }
+
+        .arch-node-icon {
+            font-size: 22px;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        .arch-node-title {
+            font-family: var(--font-display);
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-heading);
+            letter-spacing: -0.01em;
+        }
+
+        .arch-node-subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 3px;
+            font-family: var(--font-mono);
+        }
+
+        .arch-node-badge {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: rgba(59, 130, 246, 0.12);
+            color: var(--accent-blue);
+            font-size: 10px;
+            font-family: var(--font-mono);
+            font-weight: 500;
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+
+        .arch-arrow-connector {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            color: var(--accent-blue);
+        }
+
+        .arch-arrow-label {
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            margin-bottom: 3px;
+            white-space: nowrap;
+        }
+
+        .arch-arrow-symbol {
+            font-size: 16px;
+            line-height: 1;
+            color: var(--accent-blue);
+        }
+
+        .arch-split-graphic {
+            width: 100%;
+            max-width: 620px;
+            height: 48px;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .arch-branch-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            width: 100%;
+            max-width: 680px;
+            margin: 4px 0;
+        }
+
+        .arch-node-sandbox {
+            flex: 1;
+            max-width: 260px;
+            background: var(--bg-surface);
+            border-color: var(--border-strong);
+        }
+
+        .arch-or-pill {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--accent-blue);
+            padding: 5px 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 20px;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.12);
+        }
+
+        .arch-merge-graphic {
+            width: 100%;
+            max-width: 620px;
+            height: 48px;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .arch-sink-row {
+            width: 100%;
+            max-width: 580px;
+            margin-top: 4px;
+        }
+
+        .arch-node-sink {
+            background: linear-gradient(180deg, rgba(16, 19, 27, 0.95), rgba(9, 11, 16, 0.98));
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            border-radius: var(--radius-md);
+            padding: 18px 24px;
+            text-align: center;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(59, 130, 246, 0.1);
+        }
+
+        .arch-sink-title {
+            font-family: var(--font-display);
+            font-size: 15px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 2px;
+        }
+
+        .arch-sink-subtitle {
+            font-size: 12px;
+            color: var(--accent-blue);
+            font-family: var(--font-mono);
+            margin-bottom: 12px;
+        }
+
+        .arch-sink-pills {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
         }
     </style>
 </head>
 
-<body class="bg-void text-snow font-sans antialiased min-h-screen flex flex-col selection:bg-blue selection:text-white">
+<body>
 
-    <!-- ─── Navigation Bar ──────────────────────────────────────────────────────── -->
-    <header class="fixed top-0 inset-x-0 z-50 h-14 border-b border-edge bg-void/90 backdrop-blur-md px-6 flex items-center justify-between">
-        <div class="flex items-center gap-6">
-            <a href="/aboutCodeEditor" class="font-mono text-sm text-blue tracking-tight hover:opacity-85 transition-opacity">
-                pce/about
-            </a>
-            <span class="hidden md:inline-block h-4 w-px bg-edge"></span>
-            <div class="hidden md:flex items-center gap-5 font-mono text-xs text-muted">
-                <a href="#features" class="hover:text-snow transition-colors">features</a>
-                <a href="#architecture" class="hover:text-snow transition-colors">architecture</a>
-                <a href="#stack" class="hover:text-snow transition-colors">stack</a>
-                <a href="#local-ai" class="hover:text-snow transition-colors">local ai</a>
+    <!-- ─── Site Navigation ───────────────────────────────────────────────────── -->
+    <header class="site-header">
+        <div class="container header-inner">
+            <div style="display: flex; align-items: center; gap: 24px;">
+                <a href="/aboutCodeEditor" class="brand-link">
+                    <span>pce</span>
+                    <span style="color: var(--text-muted);">/</span>
+                    <span style="color: var(--accent-blue);">about</span>
+                    <span class="brand-badge">v2.1</span>
+                </a>
+
+                <nav class="nav-links" aria-label="Main Navigation">
+                    <a href="#architecture" class="nav-link">architecture</a>
+                    <a href="#how-it-works" class="nav-link">how it works</a>
+                    <a href="#sandbox" class="nav-link">codebox sandbox</a>
+                    <a href="#features" class="nav-link">features</a>
+                </nav>
             </div>
-        </div>
 
-        <div class="flex items-center gap-3">
-            <a href="/DashboardCodeEditor" class="font-mono text-xs text-muted hover:text-snow transition-colors px-3 py-1.5 rounded-sm border border-edge hover:border-muted">
-                Dashboard
-            </a>
-            <a href="/editor" class="font-mono text-xs bg-blue text-white px-3.5 py-1.5 rounded-sm hover:bg-blue/90 transition-colors">
-                Launch Editor →
-            </a>
+            <div class="header-actions">
+                <% if (typeof user !=='undefined' && user) { %>
+                    <a href="/DashboardCodeEditor" class="btn-subtle">
+                        Dashboard
+                    </a>
+                    <% } else { %>
+                        <a href="/login" class="btn-subtle">
+                            Log In
+                        </a>
+                        <% } %>
+                            <a href="/editor" class="btn-primary">
+                                <span>Launch Editor</span>
+                                <span aria-hidden="true">→</span>
+                            </a>
+            </div>
         </div>
     </header>
 
-    <!-- ─── Hero Section ─────────────────────────────────────────────────────── -->
-    <section class="pt-32 pb-16 px-6 max-w-5xl mx-auto w-full">
-        <h1 class="text-3xl md:text-5xl font-medium tracking-tight text-snow leading-tight max-w-3xl mb-4">
-            A developer workspace with local & cloud AI and live code execution.
-        </h1>
-
-        <p class="text-base text-muted max-w-2xl leading-relaxed mb-8">
-            An in-browser code editor powered by Monaco, Judge0 sandbox execution, and  local + cloud AI assistant agents.
-        </p>
-
-        <div class="flex flex-wrap items-center gap-3">
-            <a href="/editor" class="bg-blue hover:bg-blue/90 text-white font-mono text-xs px-4 py-2 rounded-sm transition-colors">
-                Launch Editor
-            </a>
-            <a href="/DashboardCodeEditor" class="border border-edge hover:border-muted text-snow font-mono text-xs px-4 py-2 rounded-sm transition-colors">
-                Workspaces
-            </a>
-        </div>
-    </section>
-
-    <!-- ─── System Features ───────────────────────────────────────────────── -->
-    <section id="features" class="py-16 px-6 border-t border-edge bg-surface/50">
-        <div class="max-w-5xl mx-auto">
-            <div class="mb-10">
-                <h2 class="text-xl md:text-2xl font-medium text-snow">Core Features</h2>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
-                    <h3 class="text-sm font-medium text-snow font-mono">Code Execution</h3>
-                    <p class="text-xs text-muted leading-relaxed">
-                        Run JavaScript, Python, C++, Java, Rust, and Go directly in isolated containers with live terminal output.
-                    </p>
+    <main>
+        <!-- ─── Hero Section ──────────────────────────────────────────────────── -->
+        <section class="hero-section">
+            <div class="container">
+                <div class="tag-pill">
+                    <span class="status-dot"></span>
+                    <span> IDE Environment</span>
                 </div>
 
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
-                    <h3 class="text-sm font-medium text-snow font-mono">Monaco Editor & Files</h3>
-                    <p class="text-xs text-muted leading-relaxed">
-                        VS Code editing experience with syntax highlighting, file tree explorer, and multi-file workspaces.
-                    </p>
-                </div>
+                <h1 class="hero-title">
+                    High-performance web IDE with <span class="gradient-text">sandboxed Codebox execution</span> and
+                    streaming AI assistance.
+                </h1>
 
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
-                    <h3 class="text-sm font-medium text-snow font-mono">HTML Preview</h3>
-                    <p class="text-xs text-muted leading-relaxed">
-                        Live full-page HTML, CSS, and JS preview rendered directly in a dedicated browser tab.
-                    </p>
-                </div>
-
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
-                    <h3 class="text-sm font-medium text-snow font-mono">PDF & Zip Exports</h3>
-                    <p class="text-xs text-muted leading-relaxed">
-                        Export your workspace as a zip archive or generate styled PDF code documentation.
-                    </p>
-                </div>
-
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
-                    <h3 class="text-sm font-medium text-snow font-mono">AI Teacher Agent</h3>
-                    <p class="text-xs text-muted leading-relaxed">
-                        Streaming AI assistance powered by local + cloud AI models with workspace tools and Google Fonts support.
-                    </p>
-                </div>
-
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-2">
-                    <h3 class="text-sm font-medium text-snow font-mono">Account Security</h3>
-                    <p class="text-xs text-muted leading-relaxed">
-                        User authentication with HTTP-only cookies and bcrypt-hashed credentials.
-                    </p>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <!-- ─── Interactive Project Architecture ──────────────────────────────── -->
-    <section id="architecture" class="py-24 px-6 border-t border-edge">
-        <div class="max-w-5xl mx-auto">
-            <div class="mb-12">
-                <span class="font-mono text-2xs text-blue uppercase tracking-widest block mb-2">// project structure</span>
-                <h2 class="text-2xl md:text-3xl font-medium text-snow">Source code organization</h2>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
-                
-                <!-- Tree explorer widget -->
-                <div class="lg:col-span-2 bg-surface rounded-sm border border-edge p-5 font-mono text-xs select-none">
-                    <div class="text-snow font-medium mb-3 pb-2 border-b border-edge">PERSONAL_CODE_EDITOR/</div>
-
-                    <div class="space-y-1.5 text-muted">
-                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="index">
-                            <span class="text-blue">📄</span> index.js
-                        </div>
-                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="config">
-                            <span class="text-blue">⚙️</span> src/Config/
-                        </div>
-                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="routes">
-                            <span class="text-blue">📁</span> src/Routes/
-                        </div>
-                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="models">
-                            <span class="text-blue">🗄️</span> src/Models/
-                        </div>
-                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="views">
-                            <span class="text-blue">🖼️</span> src/Views/
-                        </div>
-                        <div class="tree-node cursor-pointer hover:text-snow transition-colors flex items-center gap-2 p-1 rounded" data-target="public">
-                            <span class="text-blue">📦</span> src/public/
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Info detail pane -->
-                <div class="lg:col-span-3 bg-surface border border-edge p-6 rounded-sm min-h-[220px]">
-                    <div id="info-default" class="info-pane">
-                        <p class="text-sm text-muted">Click any folder or file on the left to inspect its architectural responsibility.</p>
-                    </div>
-
-                    <div id="info-index" class="info-pane hidden space-y-3">
-                        <div class="font-mono text-xs text-blue font-medium">index.js</div>
-                        <p class="text-sm text-muted leading-relaxed">
-                            App entry point. Configures Express middleware (`express.json`, `cookie-parser`, `morgan`), mounts router modules, connects to MongoDB via `connectDB()`, and starts the server on port 3001.
-                        </p>
-                    </div>
-
-                    <div id="info-config" class="info-pane hidden space-y-3">
-                        <div class="font-mono text-xs text-blue font-medium">src/Config/</div>
-                        <p class="text-sm text-muted leading-relaxed">
-                            Contains `db.connection.js` for MongoDB Atlas connections and `codeExecution.config.js` which handles base64 encoding, RapidAPI Judge0 HTTP submissions, and status polling logic.
-                        </p>
-                    </div>
-
-                    <div id="info-routes" class="info-pane hidden space-y-3">
-                        <div class="font-mono text-xs text-blue font-medium">src/Routes/</div>
-                        <p class="text-sm text-muted leading-relaxed">
-                            Houses modular router files: `authRoute` for login/register, `dashbordRoutes` for user project rendering, and `editorRoutes` for `/runCode`, `/save-project`, and `/save-pdf` endpoints.
-                        </p>
-                    </div>
-
-                    <div id="info-models" class="info-pane hidden space-y-3">
-                        <div class="font-mono text-xs text-blue font-medium">src/Models/</div>
-                        <p class="text-sm text-muted leading-relaxed">
-                            Mongoose schemas defining MongoDB structures: `userModels.js` (authentication credentials), `projectModel.js` (workspace metadata & URL), and `pdfModels.js` (generated PDF records).
-                        </p>
-                    </div>
-
-                    <div id="info-views" class="info-pane hidden space-y-3">
-                        <div class="font-mono text-xs text-blue font-medium">src/Views/</div>
-                        <p class="text-sm text-muted leading-relaxed">
-                            EJS templates rendered server-side by Express. Includes `editor.ejs` (Monaco workspace), `DashboardCodeEditor.ejs` (user project list), and `aboutProjectRoute.ejs`.
-                        </p>
-                    </div>
-
-                    <div id="info-public" class="info-pane hidden space-y-3">
-                        <div class="font-mono text-xs text-blue font-medium">src/public/</div>
-                        <p class="text-sm text-muted leading-relaxed">
-                            Static assets including `editor.js` (file tree drag-and-drop state manager & Monaco instance handler), `style_codeeditor.css` (custom design system tokens), and stored `/uploads/`.
-                        </p>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <!-- ─── Tech Stack Grid ──────────────────────────────────────────────── -->
-    <section id="stack" class="py-24 px-6 border-t border-edge bg-surface/50">
-        <div class="max-w-5xl mx-auto">
-            <div class="mb-12">
-                <span class="font-mono text-2xs text-blue uppercase tracking-widest block mb-2">// technology stack</span>
-                <h2 class="text-2xl md:text-3xl font-medium text-snow">Engineered with modern tooling</h2>
-            </div>
-
-            <div class="grid-hairline grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 border border-edge rounded-sm overflow-hidden">
-                <div class="bg-void p-6 space-y-2">
-                    <span class="font-mono text-2xs text-muted block">EDITOR CORE</span>
-                    <h3 class="text-snow font-medium">Monaco Editor</h3>
-                    <p class="text-xs text-muted leading-relaxed">VS Code browser engine with syntax highlighting and multi-model buffer switching.</p>
-                </div>
-
-                <div class="bg-void p-6 space-y-2">
-                    <span class="font-mono text-2xs text-muted block">COMPILER ENGINE</span>
-                    <h3 class="text-snow font-medium">Judge0 API</h3>
-                    <p class="text-xs text-muted leading-relaxed">Isolated sandboxed multi-language execution engine with telemetry logging.</p>
-                </div>
-
-                <div class="bg-void p-6 space-y-2">
-                    <span class="font-mono text-2xs text-muted block">PERSISTENCE</span>
-                    <h3 class="text-snow font-medium">MongoDB + Mongoose</h3>
-                    <p class="text-xs text-muted leading-relaxed">Document database managing users, workspace zip archives, and generated PDF paths.</p>
-                </div>
-
-                <div class="bg-void p-6 space-y-2">
-                    <span class="font-mono text-2xs text-muted block">FILE UPLOADS</span>
-                    <h3 class="text-snow font-medium">Multer</h3>
-                    <p class="text-xs text-muted leading-relaxed">Multipart middleware handling project zip archiving and PDF exports to storage.</p>
-                </div>
-
-                <div class="bg-void p-6 space-y-2">
-                    <span class="font-mono text-2xs text-muted block">AUTHENTICATION</span>
-                    <h3 class="text-snow font-medium">JWT & BcryptJS</h3>
-                    <p class="text-xs text-muted leading-relaxed">Secure HTTP-only cookie authentication paired with salt-hashed user passwords.</p>
-                </div>
-
-                <div class="bg-void p-6 space-y-2">
-                    <span class="font-mono text-2xs text-muted block">SERVER RUNTIME</span>
-                    <h3 class="text-snow font-medium">Node.js + Express 5</h3>
-                    <p class="text-xs text-muted leading-relaxed">ESM module server routing with EJS views and static file delivery.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ─── Local AI Setup (Ollama) ──────────────────────────────────────── -->
-    <section id="local-ai" class="py-20 px-6 border-t border-edge">
-        <div class="max-w-5xl mx-auto">
-            <div class="mb-10">
-                <span class="font-mono text-2xs text-blue uppercase tracking-widest block mb-2">// offline & local inference</span>
-                <h2 class="text-2xl md:text-3xl font-medium text-snow">Running Local AI with Ollama</h2>
-                <p class="text-sm text-muted mt-2 max-w-2xl leading-relaxed">
-                    By default, the editor connects to Ollama cloud. To run models entirely locally on your own GPU/CPU for zero latency and offline coding, install Ollama and pull your preferred coding models:
+                <p class="hero-lead">
+                    Run untrusted code safely inside disposable Docker containers, program with Monaco Editor buffers,
+                    and collaborate with a dual-mode LangChain teacher agent powered by  cloud models.
                 </p>
-            </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-3">
-                    <span class="text-snow font-medium text-sm block">1. Install Ollama</span>
-                    <div class="bg-void p-3 rounded-sm border border-edge text-snow select-all overflow-x-auto">
-                        curl -fsSL https://ollama.com/install.sh | sh
+                <div class="hero-cta-group">
+                    <a href="/editor" class="btn-primary" style="padding: 10px 20px; font-size: 13px;">
+                        Launch Editor Workspace →
+                    </a>
+                    <a href="#architecture" class="btn-subtle" style="padding: 10px 18px; font-size: 13px;">
+                        Explore System Architecture ↓
+                    </a>
+                    <% if (typeof user !=='undefined' && user) { %>
+                        <a href="/DashboardCodeEditor" class="btn-subtle" style="padding: 10px 18px; font-size: 13px;">
+                            My Projects
+                        </a>
+                        <% } else { %>
+                            <a href="/register" class="btn-subtle" style="padding: 10px 18px; font-size: 13px;">
+                                Create Account
+                            </a>
+                            <% } %>
+                </div>
+
+                <!-- Live System Telemetry Status -->
+                <div class="health-bar" role="region" aria-label="System Components Status">
+                    <div class="health-item">
+                        <span class="health-label">Editor Core</span>
+                        <span class="health-value">
+                            <span class="health-indicator"></span>
+                            Monaco v0.52
+                        </span>
                     </div>
-                    <p class="text-2xs text-muted font-sans leading-relaxed">
-                        For Linux and macOS. Windows users can download the installer directly from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" class="text-blue hover:underline">ollama.com</a>.
+                    <div class="health-item">
+                        <span class="health-label">Execution Engine</span>
+                        <span class="health-value">
+                            <span class="health-indicator"></span>
+                            Codebox Sandbox 
+                        </span>
+                    </div>
+                    <div class="health-item">
+                        <span class="health-label">Inference Engine</span>
+                        <span class="health-value">
+                            <span class="health-indicator"></span>
+                            LangChain + Ollama API
+                        </span>
+                    </div>
+                    <div class="health-item">
+                        <span class="health-label">Storage & Auth</span>
+                        <span class="health-value">
+                            <span class="health-indicator"></span>
+                            MongoDB + JWT
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Interactive Architecture Inspector ────────────────────────────── -->
+        <section id="architecture" class="section-block">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-eyebrow">// system architecture</span>
+                    <h2 class="section-title">Four-tier modular architecture</h2>
+                    <p class="section-desc">
+                        Select a component below to inspect its data flow, security boundary, and implementation
+                        contract.
                     </p>
                 </div>
 
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-3">
-                    <span class="text-snow font-medium text-sm block">2. Pull a Code Model</span>
-                    <div class="bg-void p-3 rounded-sm border border-edge text-snow select-all overflow-x-auto space-y-1">
-                        <div>ollama pull qwen2.5-coder:7b</div>
-                        <div class="text-muted"># or light model:</div>
-                        <div>ollama pull llama3.2:1b</div>
+                <div class="inspector-layout">
+                    <!-- Tab Selector Navigation -->
+                    <div class="tab-menu" role="tablist" aria-orientation="vertical">
+                        <button class="tab-btn active" role="tab" aria-selected="true" id="tab-sandbox"
+                            data-target="sandbox">
+                            <span>1. Execution Sandbox</span>
+                            <span class="tab-tag">Codebox</span>
+                        </button>
+                        <button class="tab-btn" role="tab" aria-selected="false" id="tab-ai" data-target="ai">
+                            <span>2. Intelligence Layer</span>
+                            <span class="tab-tag">LangChain</span>
+                        </button>
+                        <button class="tab-btn" role="tab" aria-selected="false" id="tab-editor" data-target="editor">
+                            <span>3. Editor Core & UI</span>
+                            <span class="tab-tag">Monaco</span>
+                        </button>
+                        <button class="tab-btn" role="tab" aria-selected="false" id="tab-security"
+                            data-target="security">
+                            <span>4. Security & Storage</span>
+                            <span class="tab-tag">Defense</span>
+                        </button>
                     </div>
-                    <p class="text-2xs text-muted font-sans leading-relaxed">
-                        Choose <code class="text-snow">qwen2.5-coder</code> for deep coding or <code class="text-snow">llama3.2:1b</code> for fast, lightweight responses.
+
+                    <!-- Detail Display Pane -->
+                    <div class="inspector-content" id="inspector-display" role="tabpanel" aria-labelledby="tab-sandbox">
+                        <!-- Populated by JavaScript below -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Codebox Sandbox Deep Dive ─────────────────────────────────────── -->
+        <section id="sandbox" class="section-block" style="background: var(--bg-surface);">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-eyebrow">// zero host exposure</span>
+                    <h2 class="section-title">Codebox containerized code execution</h2>
+                    <p class="section-desc">
+                        Untrusted user code is completely isolated from the main web server, database, and host
+                        filesystem.
+                    </p>
+                    <div style="margin-top: 14px;">
+                        <a href="https://github.com/hiteshchoudhary/Codebox" target="_blank" rel="noopener noreferrer" class="btn-subtle" style="gap: 8px; font-size: 12px; width: fit-content;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.9;" aria-hidden="true">
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                            </svg>
+                            <span>hiteshchoudhary/Codebox</span>
+                            <span style="color: var(--accent-blue); font-size: 11px;">↗</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- ─── How It Works Sandbox Architecture Flow ────────────────── -->
+                <div id="how-it-works" class="how-it-works-block">
+                    <div class="how-it-works-header">
+                        <div>
+                            <span class="section-eyebrow" style="margin-bottom: 4px;">// system blueprint</span>
+                            <h3 class="how-it-works-title">How It Works: Personal Code Editor Architecture</h3>
+                        </div>
+                        <div class="diagram-mode-tabs" role="tablist" aria-label="Architecture Diagram Views">
+                            <button type="button" class="diagram-mode-tab active" id="tab-diag-visual" onclick="switchDiagram('visual')">
+                                <span>🎨 Visual Flow</span>
+                            </button>
+                            <button type="button" class="diagram-mode-tab" id="tab-diag-execution" onclick="switchDiagram('execution')">
+                                <span>⚡ CodeBox Pipeline (ASCII)</span>
+                            </button>
+                            <button type="button" class="diagram-mode-tab" id="tab-diag-system" onclick="switchDiagram('system')">
+                                <span>🏛️ Full-Stack System</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="how-it-works-card">
+                        <div class="how-it-works-toolbar">
+                            <div class="how-it-works-meta">
+                                <div class="diagram-window-dots">
+                                    <span class="diagram-window-dot red"></span>
+                                    <span class="diagram-window-dot yellow"></span>
+                                    <span class="diagram-window-dot green"></span>
+                                </div>
+                                <span class="diagram-caption" id="diagram-filename-label">codebox-architecture.visual</span>
+                            </div>
+                            <button type="button" class="btn-copy-diagram" id="btn-copy-diagram" onclick="copyDiagramFlow()" title="Copy diagram to clipboard">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span id="copy-btn-label">Copy Diagram</span>
+                            </button>
+                        </div>
+
+                        <!-- 🎨 Interactive Visual Architecture View (Matches ChaiCode Flow) -->
+                        <div class="visual-arch-container" id="visual-arch-wrapper">
+                            <!-- Stage 1: Pipeline Ingestion Row -->
+                            <div class="arch-row-linear">
+                                <div class="arch-node-card">
+                                    <div class="arch-node-icon">💻</div>
+                                    <div class="arch-node-title">ChaiCode Frontend</div>
+                                    <div class="arch-node-subtitle">Personal Code Editor</div>
+                                    <div class="arch-node-badge">Client IDE</div>
+                                </div>
+
+                                <div class="arch-arrow-connector">
+                                    <span class="arch-arrow-label">POST /submissions</span>
+                                    <span class="arch-arrow-symbol">▶</span>
+                                </div>
+
+                                <div class="arch-node-card">
+                                    <div class="arch-node-icon">⚡</div>
+                                    <div class="arch-node-title">CodeBox API</div>
+                                    <div class="arch-node-subtitle">Port :3000 Gateway</div>
+                                    <div class="arch-node-badge">REST API</div>
+                                </div>
+
+                                <div class="arch-arrow-connector">
+                                    <span class="arch-arrow-label">Enqueue Job</span>
+                                    <span class="arch-arrow-symbol">▶</span>
+                                </div>
+
+                                <div class="arch-node-card">
+                                    <div class="arch-node-icon">📦</div>
+                                    <div class="arch-node-title">Redis Queue</div>
+                                    <div class="arch-node-subtitle">Async Buffer</div>
+                                    <div class="arch-node-badge">In-Memory</div>
+                                </div>
+
+                                <div class="arch-arrow-connector">
+                                    <span class="arch-arrow-label">Pop Job</span>
+                                    <span class="arch-arrow-symbol">▶</span>
+                                </div>
+
+                                <div class="arch-node-card">
+                                    <div class="arch-node-icon">⚙️</div>
+                                    <div class="arch-node-title">Workers</div>
+                                    <div class="arch-node-subtitle">Execution Pool</div>
+                                    <div class="arch-node-badge">Worker Daemon</div>
+                                </div>
+                            </div>
+
+                            <!-- SVG Split Branches Connector -->
+                            <svg class="arch-split-graphic" viewBox="0 0 620 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M500 0 V16 H140 V42" stroke="var(--border-strong)" stroke-width="2" stroke-dasharray="4 4" />
+                                <path d="M500 16 H500 V42" stroke="var(--border-strong)" stroke-width="2" stroke-dasharray="4 4" />
+                                <polygon points="140,48 136,40 144,40" fill="var(--accent-blue)" />
+                                <polygon points="500,48 496,40 504,40" fill="var(--accent-blue)" />
+                            </svg>
+
+                            <!-- Stage 2: Sandboxing Technologies -->
+                            <div class="arch-branch-row">
+                                <div class="arch-node-card arch-node-sandbox">
+                                    <div class="arch-node-icon">⚡</div>
+                                    <div class="arch-node-title">Firecracker</div>
+                                    <div class="arch-node-subtitle">(microVM)</div>
+                                    <span class="tech-pill" style="margin-top:6px;">Hardware Virtualization</span>
+                                </div>
+
+                                <div class="arch-or-pill">OR</div>
+
+                                <div class="arch-node-card arch-node-sandbox">
+                                    <div class="arch-node-icon">🐳</div>
+                                    <div class="arch-node-title">Docker</div>
+                                    <div class="arch-node-subtitle">(container)</div>
+                                    <span class="tech-pill" style="margin-top:6px;">cgroups &amp; Namespaces</span>
+                                </div>
+                            </div>
+
+                            <!-- SVG Merge Branches Connector -->
+                            <svg class="arch-merge-graphic" viewBox="0 0 620 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M140 0 V24 H310 V42" stroke="var(--border-strong)" stroke-width="2" stroke-dasharray="4 4" />
+                                <path d="M500 0 V24 H310" stroke="var(--border-strong)" stroke-width="2" stroke-dasharray="4 4" />
+                                <polygon points="310,48 306,40 314,40" fill="var(--accent-blue)" />
+                            </svg>
+
+                            <!-- Stage 3: Isolated Sandboxed Execution -->
+                            <div class="arch-sink-row">
+                                <div class="arch-node-card arch-node-sink">
+                                    <div class="arch-sink-title">Sandboxed Code Execution</div>
+                                    <div class="arch-sink-subtitle">(isolated, time-limited)</div>
+                                    <div class="arch-sink-pills">
+                                        <span class="tech-pill">No Host Exposure</span>
+                                        <span class="tech-pill">--net none Air-Gapped</span>
+                                        <span class="tech-pill">Memory &amp; CPU Limits</span>
+                                        <span class="tech-pill">Auto-Disposed Containers</span>
+                                        <span class="tech-pill">7 Codebox Runtimes</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 📋 Monospace Diagram View -->
+                        <div class="how-it-works-diagram" id="ascii-arch-wrapper" style="display: none;">
+                            <pre id="diagram-content"><code id="diagram-code"></code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Ephemeral Isolation</h3>
+                            <div class="feature-icon-badge">📦</div>
+                        </div>
+                        <p class="feature-desc">
+                            Every execution launches inside a fresh, disposable container or Firecracker microVM.
+                            Filesystem mutations are discarded instantly upon completion.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">Docker</span>
+                            <span class="tech-pill">MicroVM</span>
+                            <span class="tech-pill">No Disk Residue</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Host Secrets Protection</h3>
+                            <div class="feature-icon-badge">🔒</div>
+                        </div>
+                        <p class="feature-desc">
+                            The sandbox environment has zero access to your backend's <code>process.env</code>, MongoDB
+                            connection URI, JWT secrets, or filesystem uploads.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">Air-Gapped</span>
+                            <span class="tech-pill">No Env Leaks</span>
+                            <span class="tech-pill">Zero Trust</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Resource & DoS Bounds</h3>
+                            <div class="feature-icon-badge">⚡</div>
+                        </div>
+                        <p class="feature-desc">
+                            Kernel cgroup bounds cap memory allocation, CPU cycles, and process counts to neutralize
+                            infinite allocation attacks and fork bombs cleanly.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">Memory Limits</span>
+                            <span class="tech-pill">CPU Throttling</span>
+                            <span class="tech-pill">PID Limits</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Core Features Matrix ──────────────────────────────────────────── -->
+        <section id="features" class="section-block">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-eyebrow">// capabilities</span>
+                    <h2 class="section-title">Built for modern developer workflows</h2>
+                    <p class="section-desc">
+                        Comprehensive feature set designed for editing, compiling, documenting, and testing code.
                     </p>
                 </div>
 
-                <div class="border border-edge bg-surface p-5 rounded-sm space-y-3">
-                    <span class="text-snow font-medium text-sm block">3. Start Service</span>
-                    <div class="bg-void p-3 rounded-sm border border-edge text-snow select-all overflow-x-auto">
-                        ollama serve
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Sandboxed Language Runtimes</h3>
+                            <div class="feature-icon-badge">⚙️</div>
+                        </div>
+                        <p class="feature-desc">
+                            Run JavaScript (Node.js 18), TypeScript 5, Python 3.8, C++ (GCC 9.4), C (GCC 9.4), and Java
+                            (OpenJDK 17) in isolated Codebox containers with live stdout/stderr telemetry.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">Judge0 Spec</span>
+                            <span class="tech-pill">Codebox API</span>
+                            <span class="tech-pill">Dual Engine</span>
+                        </div>
                     </div>
-                    <p class="text-2xs text-muted font-sans leading-relaxed">
-                        Starts local server on <code class="text-snow">localhost:11434</code>. The editor automatically prioritizes local models over cloud.
-                    </p>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Multi-File Monaco Engine</h3>
+                            <div class="feature-icon-badge">💻</div>
+                        </div>
+                        <p class="feature-desc">
+                            Full VS Code editor experience with syntax highlighting, indentation guides, multi-cursor,
+                            and active tab switching across workspace files.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">Monaco 0.52</span>
+                            <span class="tech-pill">Virtual Tree</span>
+                            <span class="tech-pill">Auto-save</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Isolated HTML Preview</h3>
+                            <div class="feature-icon-badge">🌐</div>
+                        </div>
+                        <p class="feature-desc">
+                            Render HTML, CSS, and client-side JavaScript in real-time inside a dedicated sandboxed
+                            preview tab with strict origin isolation.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">CSP Sandbox</span>
+                            <span class="tech-pill">Opaque Origin</span>
+                            <span class="tech-pill">In-Memory</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Streaming AI Assistant</h3>
+                            <div class="feature-icon-badge">🤖</div>
+                        </div>
+                        <p class="feature-desc">
+                            Interactive code assistant capable of reading workspace files, generating full scripts,
+                            diagnosing errors, and streaming thought chains over WebSockets.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">Socket.IO</span>
+                            <span class="tech-pill">LangGraph</span>
+                            <span class="tech-pill">Tool Calls</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Per-IP Rate Limiting</h3>
+                            <div class="feature-icon-badge">🛡️</div>
+                        </div>
+                        <p class="feature-desc">
+                            Hardened security perimeter with IP-based and user-based sliding-window rate limiters
+                            protecting authentication routes, code execution, and AI queries.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">express-rate-limit</span>
+                            <span class="tech-pill">Brute-Force Guard</span>
+                            <span class="tech-pill">HTTP 429</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <h3 class="feature-title">Zip & PDF Export Engine</h3>
+                            <div class="feature-icon-badge">📁</div>
+                        </div>
+                        <p class="feature-desc">
+                            Download complete workspaces as standard zip archives or generate styled PDF code reports
+                            with strict path traversal containment checks.
+                        </p>
+                        <div class="feature-meta">
+                            <span class="tech-pill">PDFKit</span>
+                            <span class="tech-pill">Archiver</span>
+                            <span class="tech-pill">Owner-Only</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ─── Call to Action ───────────────────────────────────────────────── -->
-    <section class="py-24 px-6 border-t border-edge">
-        <div class="max-w-5xl mx-auto border border-edge bg-surface p-8 md:p-12 rounded-sm flex flex-col md:flex-row md:items-center justify-between gap-8">
-            <div>
-                <h2 class="text-2xl font-medium text-snow mb-2">Ready to start coding?</h2>
-                <p class="text-sm text-muted">Launch the editor session or access your workspace dashboard.</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <a href="/editor" class="bg-blue hover:bg-blue/90 text-white font-mono text-sm px-5 py-2.5 rounded-sm transition-colors whitespace-nowrap">
-                    Launch Editor
-                </a>
-                <a href="/login" class="border border-edge hover:border-muted text-snow font-mono text-sm px-5 py-2.5 rounded-sm transition-colors whitespace-nowrap">
-                    Sign In
-                </a>
-            </div>
-        </div>
-    </section>
 
-    <!-- ─── Footer ────────────────────────────────────────────────────────── -->
-    <footer class="h-14 border-t border-edge px-6 flex items-center justify-between text-2xs font-mono text-muted max-w-5xl mx-auto w-full">
-        <span>personal_code_editor // about</span>
-        <div class="flex items-center gap-4">
-            <a href="/DashboardCodeEditor" class="hover:text-snow transition-colors">dashboard</a>
-            <a href="/editor" class="hover:text-snow transition-colors">editor</a>
-            <a href="/login" class="hover:text-snow transition-colors">account</a>
+
+        <!-- ─── Call to Action ────────────────────────────────────────────────── -->
+        <section class="section-block">
+            <div class="container">
+                <div class="cta-banner">
+                    <div>
+                        <h2 class="cta-heading">Ready to build and test code?</h2>
+                        <p class="cta-text">
+                            Launch an instant editing session, open your existing projects, or explore the API.
+                        </p>
+                    </div>
+
+                    <div class="cta-buttons">
+                        <a href="/editor" class="btn-primary" style="padding: 10px 22px; font-size: 13px;">
+                            Launch Editor →
+                        </a>
+                        <% if (typeof user !=='undefined' && user) { %>
+                            <a href="/DashboardCodeEditor" class="btn-subtle"
+                                style="padding: 10px 20px; font-size: 13px;">
+                                Open Dashboard
+                            </a>
+                            <% } else { %>
+                                <a href="/login" class="btn-subtle" style="padding: 10px 20px; font-size: 13px;">
+                                    Sign In
+                                </a>
+                                <% } %>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ─── Site Footer ───────────────────────────────────────────────────────── -->
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>personal_code_editor // open architecture</div>
+            <div class="footer-links">
+                <a href="/DashboardCodeEditor">dashboard</a>
+                <a href="/editor">editor</a>
+                <a href="/login">authentication</a>
+                <a href="https://github.com/hiteshchoudhary/Codebox" target="_blank" rel="noopener noreferrer">codebox
+                    repo</a>
+            </div>
         </div>
     </footer>
 
-    <!-- Interactive Script -->
+    <!-- ─── Interactive Architecture Script (No External Dependencies) ───────── -->
     <script>
-        // Architecture explorer click handler
-        const nodes = document.querySelectorAll(".tree-node");
-        const panes = document.querySelectorAll(".info-pane");
+        (function () {
+            // Architecture Content Dictionary
+            const ARCHITECTURE_DATA = {
+                sandbox: {
+                    badge: "Execution Engine (Codebox)",
+                    title: "Container & MicroVM Sandbox Isolation",
+                    body: "Replaced host child_process execution with isolated Codebox containers. Submissions are dispatched synchronously via REST API with strict timeouts, zero local filesystem exposure, and no environment variable leakage.",
+                    code: `// Express Codebox Adapter Dispatch\nPOST \${CODEBOX_URL}/submissions?wait=true\nHeaders: { "X-Auth-Token": CODEBOX_AUTH_TOKEN }\nBody: {\n  "source_code": code,\n  "language_id": codeboxLangId,\n  "stdin": stdin\n}\n// Executed in container with --network none & cgroup limits`
+                },
+                ai: {
+                    badge: "Intelligence Layer (LangChain & Ollama)",
+                    title: "Hybrid Dual-Engine AI Assistant",
+                    body: "The AI assistant dynamically routes queries between local Ollama instances (for offline, private, zero-cost execution) and cloud providers. Employs LangGraph to handle file creation and workspace inspection tools.",
+                    code: `// WebSocket Streaming AI Pipeline\nio.on('connection', (socket) => {\n  socket.on('ask-ai', async ({ prompt, model, fileSystem }) => {\n    // Rate check: 20 req/min per user\n    checkAiSocketRateLimit(socket.user.userId);\n    await runTeacherAgent({ prompt, emitter, modelName });\n  });\n});`
+                },
+                editor: {
+                    badge: "Editor Core (Monaco 0.52)",
+                    title: "Multi-Buffer File Workspace",
+                    body: "Uses Monaco Editor's native text model buffer switching to maintain instant file transitions without memory re-allocations. Features auto-saving with debounced persistence to MongoDB.",
+                    code: `// Model Buffer Switch Pattern\nfunction switchToFile(fileId) {\n  const file = fileSystem.find(f => f.id === fileId);\n  editor.setModel(models[file.id]);\n  syncLanguageDropdown(file.name);\n  triggerAutoSave(600);\n}`
+                },
+                security: {
+                    badge: "Perimeter Security & Auth",
+                    title: "Defense-in-Depth Protection",
+                    body: "Hardened perimeter featuring bcrypt-hashed passwords, signed 7-day HTTP-only JWT session cookies, path containment validation on uploads, and rate limiting across login, register, and AI endpoints.",
+                    code: `// Layered Security Stack\nrouter.post('/login', loginRateLimiter, loginController);\nrouter.post('/register', registerRateLimiter, registerController);\nrouter.post('/runCode', authenticate, codeLimiter, runCode);\nrouter.post('/ask-ai', authenticate, aiRateLimiter, askAi);`
+                }
+            };
 
-        nodes.forEach(node => {
-            node.addEventListener("click", () => {
-                const target = node.getAttribute("data-target");
-                
-                nodes.forEach(n => n.classList.remove("bg-edge", "text-snow"));
-                node.classList.add("bg-edge", "text-snow");
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const displayPane = document.getElementById('inspector-display');
 
-                panes.forEach(p => p.classList.add("hidden"));
-                const targetPane = document.getElementById("info-" + target);
-                if (targetPane) targetPane.classList.remove("hidden");
+            function renderPane(key) {
+                const item = ARCHITECTURE_DATA[key];
+                if (!item || !displayPane) return;
+
+                displayPane.innerHTML = `
+                    <div class="inspector-badge">${item.badge}</div>
+                    <h3 class="inspector-headline">${item.title}</h3>
+                    <p class="inspector-body">${item.body}</p>
+                    <pre class="code-snippet"><code>${escapeHtml(item.code)}</code></pre>
+                `;
+            }
+
+            function escapeHtml(str) {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            tabButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    tabButtons.forEach(b => {
+                        b.classList.remove('active');
+                        b.setAttribute('aria-selected', 'false');
+                    });
+
+                    btn.classList.add('active');
+                    btn.setAttribute('aria-selected', 'true');
+
+                    const target = btn.getAttribute('data-target');
+                    renderPane(target);
+                });
             });
-        });
+
+            // Initial render
+            renderPane('sandbox');
+        })();
+
+        // Architecture Diagram Toggle Data
+        const DIAGRAM_DATA = {
+            execution: {
+                filename: "codebox-pipeline.ascii",
+                text: `+---------------------+      +---------------+      +---------------+      +-----------+
+|  ChaiCode Frontend  | ───▶ |  CodeBox API  | ───▶ |  Redis Queue  | ───▶ |  Workers  |
++---------------------+      +---------------+      +---------------+      +─────┬─────+
+                                                                                 │
+                                     ┌───────────────────────────────────────────┴───────────────────────────────────────────┐
+                                     │                                                                                       │
+                                     ▼                                                                                       ▼
+                         ┌───────────────────────┐                                                               ┌───────────────────────┐
+                         │ Firecracker (microVM) │                                  OR                           │  Docker (container)   │
+                         └───────────┬───────────┘                                                               └───────────┬───────────┘
+                                     │                                                                                       │
+                                     └───────────────────────────────────────────┬───────────────────────────────────────────┘
+                                                                                 │
+                                                                                 ▼
+                                                             ┌───────────────────────────────────────┐
+                                                             │       Sandboxed Code Execution        │
+                                                             │        (isolated, time-limited)       │
+                                                             └───────────────────────────────────────┘`
+            },
+            system: {
+                filename: "pce-system-architecture.ascii",
+                text: `┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                             BROWSER CLIENT: PERSONAL CODE EDITOR (PCE)                          │
+│  ┌─────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────────────┐  │
+│  │   Monaco Code Editor    │   │  Virtual File System   │   │    Teacher Agent AI Console    │  │
+│  │ (Multi-Buffer Buffers)  │   │(Debounced LocalStorage)│   │ (Socket.IO Real-Time Stream)   │  │
+│  └────────────┬────────────┘   └───────────┬────────────┘   └───────────────┬────────────────┘  │
+└───────────────┼────────────────────────────┼────────────────────────────────┼───────────────────┘
+                │ HTTP POST /runCode         │ Sync /api/projects             │ WebSocket 'ask-ai'
+                ▼                            ▼                                ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                               EXPRESS.JS BACKEND SERVER (Port 3001)                             │
+│ ┌─────────────────────────────────────────────────────────────────────────────────────────────┐ │
+│ │ Security & Defense Layer: JWT Auth • Rate Limiters • Helmet Headers • Path Traversal Guards │ │
+│ └────────────────────────────┬────────────────────────────┬───────────────────────────────────┘ │
+│                              │                            │                                     │
+│   ┌──────────────────────────┴───┐ ┌──────────────────────┴────┐ ┌───────────────────────────┐  │
+│   │   Codebox Execution Client   │ │   Workspace Persistence   │ │     LangChain Service     │  │
+│   │ (Proxy & Java Normalization) │ │    (Mongoose Controllers) │ │ (Hybrid Model Router/RAG) │  │
+│   └──────────────┬───────────────┘ └──────────────┬────────────┘ └─────────────┬─────────────┘  │
+└──────────────────┼────────────────────────────────┼────────────────────────────┼────────────────┘
+                   │ REST (dev-token)               │ TLS Connection             │ HTTP / API Key
+                   ▼                                ▼                            ▼
+    ┌──────────────────────────────┐ ┌───────────────────────────┐ ┌───────────────────────────┐
+    │    CODEBOX SANDBOX ENGINE    │ │      DATABASE LAYER       │ │     AI INFERENCE TIER     │
+    │ ┌──────────────────────────┐ │ │  ┌─────────────────────┐  │ │ ┌───────────────────────┐ │
+    │ │   Codebox REST API :3000 │ │ │  │   MongoDB Database  │  │ │ │ Local Ollama Engine   │ │
+    │ └────────────┬─────────────┘ │ │  │ (Users, Projects,   │  │ │ │ (llama3.2 / qwen3.5)  │ │
+    │              ▼               │ │  │  Exported PDFs)     │  │ │ └───────────────────────┘ │
+    │ ┌──────────────────────────┐ │ │  └─────────────────────┘  │ │             OR            │
+    │ │    Redis Job Queue       │ │ └───────────────────────────┘ │ ┌───────────────────────┐ │
+    │ └────────────┬─────────────┘ │                               │ │ Cloud Ollama API      │ │
+    │              ▼               │                               │ │ (gemma4 / gpt-oss)    │ │
+    │ ┌──────────────────────────┐ │                               │ └───────────────────────┘ │
+    │ │   Worker Execution Pool  │ │                               └───────────────────────────┘
+    │ └────────────┬─────────────┘ │
+    │              ▼               │
+    │ ┌──────────────────────────┐ │
+    │ │  Isolated Sandboxes      │ │
+    │ │ (Docker / Firecracker)   │ │
+    │ └──────────────────────────┘ │
+    └──────────────────────────────┘`
+            }
+        };
+
+        let currentDiagramMode = 'visual';
+
+        function switchDiagram(mode) {
+            currentDiagramMode = mode;
+            const visualWrapper = document.getElementById("visual-arch-wrapper");
+            const asciiWrapper = document.getElementById("ascii-arch-wrapper");
+            const codeEl = document.getElementById("diagram-code");
+            const filenameEl = document.getElementById("diagram-filename-label");
+            const tabVisual = document.getElementById("tab-diag-visual");
+            const tabExecution = document.getElementById("tab-diag-execution");
+            const tabSystem = document.getElementById("tab-diag-system");
+
+            [tabVisual, tabExecution, tabSystem].forEach(tab => {
+                if (tab) {
+                    tab.classList.remove('active');
+                    tab.setAttribute('aria-selected', 'false');
+                }
+            });
+
+            if (mode === 'visual') {
+                if (tabVisual) {
+                    tabVisual.classList.add('active');
+                    tabVisual.setAttribute('aria-selected', 'true');
+                }
+                if (visualWrapper) visualWrapper.style.display = 'flex';
+                if (asciiWrapper) asciiWrapper.style.display = 'none';
+                if (filenameEl) filenameEl.textContent = 'codebox-architecture.visual';
+            } else {
+                const data = DIAGRAM_DATA[mode];
+                if (!data) return;
+
+                if (mode === 'execution' && tabExecution) {
+                    tabExecution.classList.add('active');
+                    tabExecution.setAttribute('aria-selected', 'true');
+                } else if (mode === 'system' && tabSystem) {
+                    tabSystem.classList.add('active');
+                    tabSystem.setAttribute('aria-selected', 'true');
+                }
+
+                if (visualWrapper) visualWrapper.style.display = 'none';
+                if (asciiWrapper) asciiWrapper.style.display = 'block';
+                if (codeEl) codeEl.textContent = data.text;
+                if (filenameEl) filenameEl.textContent = data.filename;
+            }
+        }
+        window.switchDiagram = switchDiagram;
+
+        // Diagram copy to clipboard helper
+        function copyDiagramFlow() {
+            const btnLabel = document.getElementById("copy-btn-label");
+            let textToCopy = "";
+
+            if (currentDiagramMode === 'visual' || currentDiagramMode === 'execution') {
+                textToCopy = DIAGRAM_DATA.execution.text;
+            } else {
+                textToCopy = DIAGRAM_DATA.system.text;
+            }
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                if (btnLabel) {
+                    btnLabel.textContent = "Copied!";
+                    setTimeout(() => { btnLabel.textContent = "Copy Diagram"; }, 2000);
+                }
+            }).catch(() => {
+                if (btnLabel) btnLabel.textContent = "Failed";
+            });
+        }
+        window.copyDiagramFlow = copyDiagramFlow;
     </script>
 </body>
+
 </html>

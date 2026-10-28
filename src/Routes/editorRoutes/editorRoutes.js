@@ -10,6 +10,7 @@ import Project from "../../Models/userModels/projectsModel.js/projectModel.js";
 import Pdf from "../../Models/userModels/pdfModels.js";
 import { runTeacherAgent, getAvailableModels } from "../../Services/langchainAgent.service.js";
 import { requireApiAuth as authenticate, requireAuth } from "../../Middlewares/auth.middleware.js";
+import { aiRateLimiter, codeExecutionRateLimiter } from "../../Middlewares/rateLimiter.middleware.js";
 import {
   getUserStorageDir,
   resolveUserStoragePath,
@@ -196,7 +197,7 @@ router.get("/api/models", authenticate, async (req, res) => {
 });
 
 // Run Code Endpoint
-router.post("/runCode", authenticate, async (req, res) => {
+router.post("/runCode", authenticate, codeExecutionRateLimiter, async (req, res) => {
   try {
     const { code, language_id, stdin } = req.body;
 
@@ -319,7 +320,7 @@ router.post("/save-pdf", authenticate, handleUploadSingle("pdfFile"), async (req
 });
 
 // Simple Teacher Agent Endpoint
-router.post("/ask-ai", authenticate, async (req, res) => {
+router.post("/ask-ai", authenticate, aiRateLimiter, async (req, res) => {
   try {
     const { prompt, model, fileSystem, activeFileId, code, language } = req.body;
     if (!prompt) {
