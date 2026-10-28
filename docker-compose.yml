@@ -1,3 +1,4 @@
+services:
   app:
     build:
       context: .
@@ -16,6 +17,11 @@
       - LOCAL_OLLAMA_URL=http://ollama:11434
       - OLLAMA_URL=${OLLAMA_URL:-https://ollama.com}
       - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+      - CODEBOX_URL=${CODEBOX_URL:-http://localhost:3000}
+      - CODEBOX_AUTH_TOKEN=${CODEBOX_AUTH_TOKEN:-dev-token}
+      - MONGO_URI=${MONGO_URI:-}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - SESSION_SECRET=${SESSION_SECRET:-}
     volumes:
       - uploads_data:/app/src/public/uploads
     depends_on:
