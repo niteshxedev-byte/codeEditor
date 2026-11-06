@@ -13,7 +13,14 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=production
+      - MONGO_URI=${MONGO_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - CODEBOX_URL=${CODEBOX_URL:-http://localhost:3000}
+      - CODEBOX_AUTH_TOKEN=${CODEBOX_AUTH_TOKEN:-dev-token}
+      - PUBLIC_URL=${PUBLIC_URL:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - LOCAL_OLLAMA_URL=http://ollama:11434
       - OLLAMA_URL=${OLLAMA_URL:-https://ollama.com}
       - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}

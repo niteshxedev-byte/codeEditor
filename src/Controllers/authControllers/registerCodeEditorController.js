@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import User from '../../Models/userModels/userModels.js';
+import connectDB from '../../Config/db.connection.js';
 
 const registerCodeEditorController = async (req, res) => {
     try {
@@ -62,6 +63,17 @@ const registerCodeEditorController = async (req, res) => {
                 username: cleanUsername,
                 email: cleanEmail
             });
+        }
+
+        // Fast-fail if MongoDB is not connected instead of hanging 10 seconds
+        if (mongoose.connection.readyState !== 1) {
+            await connectDB();
+            if (mongoose.connection.readyState !== 1) {
+                return sendError(503, 'Database is currently unreachable. Check your MongoDB Atlas Network Access IP whitelist and MONGO_URI.', {
+                    username: cleanUsername,
+                    email: cleanEmail
+                });
+            }
         }
 
         // 6. Check if email or username already exists

@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../../Models/userModels/userModels.js';
+import connectDB from '../../Config/db.connection.js';
 
 const loginCodeEditorController = async (req, res) => {
     try {
@@ -13,6 +15,17 @@ const loginCodeEditorController = async (req, res) => {
         const cleanEmail = email.trim().toLowerCase();
         if (cleanEmail.length > 254 || password.length > 128) {
             return res.render('auth/loginCodeEditor', { error: 'Invalid email or password length.', formData: {} });
+        }
+
+        // Fast-fail if MongoDB is not connected instead of hanging 10 seconds
+        if (mongoose.connection.readyState !== 1) {
+            await connectDB();
+            if (mongoose.connection.readyState !== 1) {
+                return res.render('auth/loginCodeEditor', {
+                    error: 'Database is currently unreachable. Check your MongoDB Atlas Network Access IP whitelist and MONGO_URI.',
+                    formData: { email: cleanEmail }
+                });
+            }
         }
 
         const user = await User.findOne({ email: cleanEmail });
