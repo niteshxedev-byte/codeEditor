@@ -16,7 +16,7 @@
   const terminal_screen = document.getElementById("terminal-screen");
   const terminal_actions = document.querySelector("#COADING_LANGUAGE");
   let selectedId = select && select.value ? Number(select.value) : 63;
-  let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "JavaScript (Node.js 18)";
+  let selectedName = select && select.selectedIndex >= 0 && select.options[select.selectedIndex].text ? select.options[select.selectedIndex].text : "JavaScript (Node.js)";
 
   if (select && terminal_actions && select.selectedIndex >= 0 && select.options[select.selectedIndex].text) {
     terminal_actions.innerHTML = `<i class="ri-terminal-line"></i> ${select.options[select.selectedIndex].text.toUpperCase()}`;
@@ -24,16 +24,30 @@
 
   function getMonacoLanguage(langId) {
     const id = Number(langId);
-    // Maps Codebox / Judge0 standard IDs to Monaco language identifiers
+    // Maps sequential IDs (1-15) and Codebox IDs (63, 71, 54, 50, 62, 73, 46) to Monaco language identifiers
     const map = {
-      63: "javascript", 1: "javascript",
-      74: "typescript", 2: "typescript",
-      71: "python", 3: "python",
-      54: "cpp", 4: "cpp",
-      50: "c", 5: "c",
-      62: "java", 6: "java",
-      73: "rust", 7: "rust",
-      46: "shell", 8: "shell",
+      1: "javascript",  // JS
+      2: "typescript",  // TS
+      3: "python",      // Python
+      4: "cpp",         // C++
+      5: "c",           // C
+      6: "java",        // Java
+      7: "rust",        // Rust
+      8: "go",          // Go
+      9: "csharp",      // C#
+      10: "php",        // PHP
+      11: "ruby",       // Ruby
+      12: "swift",      // Swift
+      13: "kotlin",     // Kotlin
+      14: "sql",        // SQL
+      15: "shell",      // Bash
+      63: "javascript", // Codebox JS
+      71: "python",     // Codebox Python
+      54: "cpp",        // Codebox C++
+      50: "c",          // Codebox C
+      62: "java",       // Codebox Java
+      73: "rust",       // Codebox Rust
+      46: "shell",      // Codebox Bash
     };
     return map[id] ?? "plaintext";
   }
@@ -55,16 +69,15 @@
     });
   }
 
-  const escapeHtml = window.escapeHtml || function (str) {
-    if (str === null || str === undefined) return "";
+  function escapeHtml(str) {
+    if (!str) return "";
     return String(str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
-  };
-  window.escapeHtml = escapeHtml;
+  }
 
   function switchTerminalTab(tab) {
     const tabOutput = document.getElementById("tab-terminal-output");
@@ -430,7 +443,7 @@
     const consoleOutput = document.getElementById("console-output");
 
     const userBubble = document.createElement("div");
-    userBubble.className = "chat-bubble-user";
+    userBubble.style.cssText = "background: #18181b; border: 1px solid #27272a; padding: 8px 10px; border-radius: 4px; font-size: 12.5px; align-self: flex-end; color: #fff; max-width: 90%;";
     userBubble.textContent = msg;
     consoleOutput.appendChild(userBubble);
     input.value = "";
@@ -474,22 +487,16 @@
       const createdFiles = [];
       let firstCreatedFileId = null;
 
-      agentBubble.innerHTML = `<strong>Teacher Agent:</strong><div class="agent-response-body" style="margin-top:4px; color:#d4d4d8; font-size:12.5px; line-height:1.5;"><em style="color:#6b7280; font-size:11px;">⏳ Thinking...</em></div>`;
+      agentBubble.innerHTML = `<strong>Teacher Agent:</strong><div class="agent-response-body" style="margin-top:4px; color:#d4d4d8; font-size:12px; line-height:1.5;"></div>`;
       const responseBody = agentBubble.querySelector('.agent-response-body');
 
       const updateBubble = () => {
-        const safeText = typeof responseText === "string" ? responseText : "";
-        const esc = typeof escapeHtml === "function" ? escapeHtml : (typeof window.escapeHtml === "function" ? window.escapeHtml : (s) => String(s || ""));
-        const formattedReply = esc(safeText)
+        const formattedReply = escapeHtml(responseText)
           .replace(/```([\s\S]*?)```/g, '<pre style="background:#000; padding:6px; border:1px solid #1F1F1F; border-radius:3px; font-family:monospace; margin-top:4px;"><code>$1</code></pre>')
           .replace(/\n/g, '<br/>');
 
-        if (responseBody) {
-          responseBody.innerHTML = formattedReply + workspaceBadgeHtml;
-        }
-        if (consoleOutput) {
-          consoleOutput.scrollTop = consoleOutput.scrollHeight;
-        }
+        responseBody.innerHTML = formattedReply + workspaceBadgeHtml;
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
       };
 
       const handleActions = (actions) => {
@@ -587,7 +594,7 @@
             ? ""
             : `<em style="color:#6b7280; font-size:11px;">⏳ Working${dots} (${elapsed}s)</em>`;
           if (statusLine && responseBody) responseBody.innerHTML = statusLine;
-        }, 1_000);
+        }, 15_000);
 
         timeoutHandle = setTimeout(() => {
           cleanup();
@@ -1135,5 +1142,4 @@
   window.saveWorkspaceToMongoDB = saveWorkspaceToMongoDB;
   window.exportToPDF = exportToPDF;
   window.openHtmlPreview = openHtmlPreview;
-  window.switchTerminalTab = switchTerminalTab;
 })();

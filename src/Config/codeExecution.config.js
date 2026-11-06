@@ -10,18 +10,34 @@ const getCodeboxUrl = () => (process.env.CODEBOX_URL || "http://localhost:3000")
 const getCodeboxAuthToken = () => process.env.CODEBOX_AUTH_TOKEN || "";
 const EXEC_TIMEOUT_MS = 20_000;
 
+function getRequestHeaders() {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  const token = getCodeboxAuthToken();
+  if (token) {
+    headers["X-Auth-Token"] = token;
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  const publicUrl = process.env.PUBLIC_URL || "https://codeeditor.niteshxe.dev";
+  if (publicUrl) {
+    headers["Origin"] = publicUrl;
+  }
+  return headers;
+}
+
 /**
  * Supported Languages in Codebox execution sandbox.
  * Strictly aligned with active Codebox runtimes (JavaScript, Python, C++, C, Java, Rust, Bash).
  */
 export const SUPPORTED_LANGUAGES = [
   { id: 63, codeboxId: 63, name: "JavaScript (Node.js)", monaco: "javascript", ext: "js" },
-  { id: 71, codeboxId: 71, name: "Python (3.x)",         monaco: "python",     ext: "py" },
-  { id: 54, codeboxId: 54, name: "C++ (G++)",            monaco: "cpp",        ext: "cpp" },
-  { id: 50, codeboxId: 50, name: "C (GCC)",              monaco: "c",          ext: "c" },
-  { id: 62, codeboxId: 62, name: "Java (OpenJDK)",        monaco: "java",       ext: "java" },
-  { id: 73, codeboxId: 73, name: "Rust (rustc)",         monaco: "rust",       ext: "rs" },
-  { id: 46, codeboxId: 46, name: "Bash",                 monaco: "shell",      ext: "sh" },
+  { id: 71, codeboxId: 71, name: "Python (3.x)", monaco: "python", ext: "py" },
+  { id: 54, codeboxId: 54, name: "C++ (G++)", monaco: "cpp", ext: "cpp" },
+  { id: 50, codeboxId: 50, name: "C (GCC)", monaco: "c", ext: "c" },
+  { id: 62, codeboxId: 62, name: "Java (OpenJDK)", monaco: "java", ext: "java" },
+  { id: 73, codeboxId: 73, name: "Rust (rustc)", monaco: "rust", ext: "rs" },
+  { id: 46, codeboxId: 46, name: "Bash", monaco: "shell", ext: "sh" },
 ];
 
 const LEGACY_ID_MAP = {
@@ -77,12 +93,7 @@ export async function executeCode({ code, language_id, stdin = "", expected_outp
     }
   }
 
-  const headers = {
-    "Content-Type": "application/json",
-  };
-  if (codeboxAuthToken) {
-    headers["X-Auth-Token"] = codeboxAuthToken;
-  }
+  const headers = getRequestHeaders();
 
   try {
     // Step 1: Submit code execution job
@@ -205,9 +216,7 @@ export async function executeCode({ code, language_id, stdin = "", expected_outp
 export async function cancelSubmission(token) {
   if (!token) return { success: false, message: "Submission token is required" };
   const codeboxUrl = getCodeboxUrl();
-  const headers = { "Content-Type": "application/json" };
-  const codeboxAuthToken = getCodeboxAuthToken();
-  if (codeboxAuthToken) headers["X-Auth-Token"] = codeboxAuthToken;
+  const headers = getRequestHeaders();
 
   try {
     const res = await axios.delete(`${codeboxUrl}/submissions/${token}`, {
@@ -227,9 +236,7 @@ export async function cancelSubmission(token) {
  */
 export async function getLanguageDetails(languageId) {
   const codeboxUrl = getCodeboxUrl();
-  const headers = { "Content-Type": "application/json" };
-  const codeboxAuthToken = getCodeboxAuthToken();
-  if (codeboxAuthToken) headers["X-Auth-Token"] = codeboxAuthToken;
+  const headers = getRequestHeaders();
 
   try {
     const res = await axios.get(`${codeboxUrl}/languages/${languageId}`, {
@@ -249,5 +256,3 @@ export default {
   cancelSubmission,
   getLanguageDetails,
 };
-
-

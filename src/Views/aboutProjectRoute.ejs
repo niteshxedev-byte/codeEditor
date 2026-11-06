@@ -4,802 +4,1108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Code Editor — Architecture, Security & Runtimes</title>
+    <title>About & Architecture — Personal Code Editor</title>
     <meta name="description"
-        content="Personal Code Editor — In-browser Monaco editor, isolated cgroup v2 & Bubblewrap sandbox execution, LangChain streaming AI assistant, and zero-trust security architecture.">
+        content="Personal Code Editor — Cloud & Local AI IDE with Monaco Editor, containerized Bubblewrap & cgroup v2 sandbox execution, and LangChain pair programming.">
 
-    <!-- Fonts: Space Grotesk (Display) & JetBrains Mono (Code/Technical) -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
 
-    <!-- Tailwind CSS CDN -->
+    <!-- Remix Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" />
+
+    <!-- Tailwind CDN for utility classes -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        void: '#090A0F',
-                        surface: '#11131A',
-                        card: '#161922',
-                        edge: '#1E2330',
-                        edgeLight: '#2A3142',
-                        accent: '#3B82F6',
-                        accentHover: '#2563EB',
-                        glow: '#6366F1',
-                        snow: '#F1F5F9',
-                        muted: '#94A3B8',
-                        dim: '#64748B',
-                        success: '#10B981',
-                        warning: '#F59E0B',
+                        void: '#000000',
+                        surface: '#0A0A0A',
+                        'surface-elevated': '#111111',
+                        edge: '#1E1E1E',
+                        blue: '#2563EB',
+                        'blue-hover': '#1D4ED8',
+                        snow: '#FFFFFF',
+                        muted: '#6B7280',
                         danger: '#EF4444',
+                        ok: '#22C55E'
                     },
                     fontFamily: {
                         sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
                     },
                     fontSize: {
                         '2xs': ['0.6875rem', { lineHeight: '1rem' }],
                         '3xs': ['0.625rem', { lineHeight: '0.875rem' }],
-                    },
+                    }
                 }
             }
         }
     </script>
 
     <style>
-        :focus-visible {
-            outline: 2px solid #3B82F6;
-            outline-offset: 3px;
+        :root {
+            --void: #000000;
+            --surface: #0a0a0a;
+            --surface-elevated: #111111;
+            --edge: #1e1e1e;
+            --edge-focus: #2563eb;
+            --blue: #2563eb;
+            --blue-hover: #1d4ed8;
+            --snow: #ffffff;
+            --muted: #6b7280;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --ok: #22c55e;
         }
 
-        html {
-            scroll-behavior: smooth;
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            background-color: var(--void);
+            color: var(--snow);
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Top Header */
+        .dashboard-header {
+            height: 52px;
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--edge);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            width: 100%;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13.5px;
+            font-weight: 500;
+            color: var(--blue);
+            text-decoration: none;
+            transition: opacity 0.15s ease;
+        }
+
+        .header-brand:hover {
+            opacity: 0.85;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .header-nav a {
+            color: var(--muted);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+
+        .header-nav a:hover {
+            color: var(--snow);
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-launch-editor {
+            background-color: var(--blue);
+            color: var(--snow);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 3px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background-color 0.15s ease;
+        }
+
+        .btn-launch-editor:hover {
+            background-color: var(--blue-hover);
+        }
+
+        .header-divider {
+            width: 1px;
+            height: 16px;
+            background-color: var(--edge);
+        }
+
+        .user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+
+        .user-tag-label {
+            color: var(--muted);
+        }
+
+        .user-tag-name {
+            color: var(--snow);
+            font-weight: 500;
+        }
+
+        .btn-header-exit {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            text-decoration: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.15s ease;
+            margin-left: 4px;
+        }
+
+        .btn-header-exit:hover {
+            color: var(--snow);
+        }
+
+        /* Main Container */
+        .dashboard-main {
+            flex: 1;
+            max-width: 1280px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        /* Welcome Card */
+        .welcome-card {
+            background-color: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: 4px;
+            padding: 24px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .welcome-title {
+            font-size: 20px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            color: var(--snow);
+        }
+
+        .welcome-subtitle {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 6px;
+            max-width: 720px;
+            line-height: 1.6;
+        }
+
+        .welcome-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-action-primary {
+            background-color: var(--blue);
+            color: var(--snow);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 7px 14px;
+            border-radius: 3px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background-color 0.15s ease;
+        }
+
+        .btn-action-primary:hover {
+            background-color: var(--blue-hover);
+        }
+
+        .btn-action-secondary {
+            background-color: var(--void);
+            color: var(--snow);
+            border: 1px solid var(--edge);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            padding: 7px 14px;
+            border-radius: 3px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: border-color 0.15s ease, color 0.15s ease;
+        }
+
+        .btn-action-secondary:hover {
+            border-color: var(--muted);
+        }
+
+        /* Section Headers */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--edge);
+            margin-bottom: 16px;
+        }
+
+        .section-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--snow);
+        }
+
+        .section-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        .section-quick-link {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--blue);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .section-quick-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Cards and Panels */
+        .item-card {
+            background-color: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: 4px;
+            padding: 18px 20px;
+            transition: border-color 0.15s ease;
+        }
+
+        .item-card:hover {
+            border-color: #2e2e2e;
+        }
+
+        .interactive-tab-btn {
+            background-color: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: 4px;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+
+        .interactive-tab-btn:hover {
+            color: var(--snow);
+            border-color: var(--muted);
+        }
+
+        .interactive-tab-btn.active {
+            border-color: var(--blue);
+            background-color: rgba(37, 99, 235, 0.08);
+            color: var(--snow);
+        }
+
+        .interactive-pane {
+            background-color: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: 4px;
+            padding: 24px;
+            min-height: 380px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Footer */
+        .dashboard-footer {
+            height: 48px;
+            border-top: 1px solid var(--edge);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11.5px;
+            color: var(--muted);
+            margin-top: auto;
+            width: 100%;
+            background-color: var(--void);
+        }
+
+        .footer-links {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .footer-link {
+            color: var(--muted);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+
+        .footer-link:hover {
+            color: var(--snow);
         }
 
         ::-webkit-scrollbar {
-            width: 7px;
-            height: 7px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #090A0F;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #1E2330;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #3B82F6;
+            width: 6px;
+            height: 6px;
         }
 
-        .code-syntax-keyword { color: #F43F5E; }
-        .code-syntax-fn { color: #38BDF8; }
-        .code-syntax-str { color: #34D399; }
-        .code-syntax-comment { color: #64748B; font-style: italic; }
-        .code-syntax-num { color: #F59E0B; }
+        ::-webkit-scrollbar-track {
+            background: #000000;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #1e1e1e;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2563eb;
+        }
     </style>
 </head>
 
-<body class="bg-void text-snow font-sans antialiased min-h-screen flex flex-col selection:bg-accent selection:text-white">
+<body>
 
-    <!-- ─── Top Navigation Bar ─────────────────────────────────────────────── -->
-    <header class="fixed top-0 inset-x-0 z-50 h-16 border-b border-edge bg-void/90 backdrop-blur-md px-6 flex items-center justify-between">
-        <div class="flex items-center gap-8">
-            <a href="/aboutCodeEditor" class="flex items-center gap-2.5 font-mono text-sm tracking-tight text-snow hover:text-accent transition-colors">
-                <span class="inline-flex items-center justify-center w-7 h-7 rounded bg-accent/15 border border-accent/30 text-accent font-semibold text-xs">&gt;_</span>
-                <span class="font-semibold">codeEditor</span>
-                <span class="text-dim text-xs font-normal">v2.4</span>
+    <!-- ─── Top Header ──────────────────────────────────────────────────────── -->
+    <header class="dashboard-header">
+        <div style="display: flex; align-items: center; gap: 24px;">
+            <a href="/aboutCodeEditor" class="header-brand">
+                <i class="ri-code-box-line"></i>
+                <span>pce/about</span>
             </a>
-
-            <nav class="hidden md:flex items-center gap-6 font-mono text-xs text-muted">
-                <a href="#architecture" class="hover:text-snow transition-colors">architecture</a>
-                <a href="#sandbox" class="hover:text-snow transition-colors">execution-sandbox</a>
-                <a href="#ai-assistant" class="hover:text-snow transition-colors">ai-assistant</a>
-                <a href="#security" class="hover:text-snow transition-colors">security-matrix</a>
-                <a href="#api" class="hover:text-snow transition-colors">api-spec</a>
+            <div class="header-divider hidden md:block"></div>
+            <nav class="header-nav hidden md:flex">
+                <a href="#features">features</a>
+                <a href="#architecture">architecture</a>
+                <a href="#sandbox">sandbox</a>
+                <a href="#ai">ai agent</a>
+                <a href="#security">security</a>
             </nav>
         </div>
 
-        <div class="flex items-center gap-3">
-            <a href="/DashboardCodeEditor" class="font-mono text-xs text-muted hover:text-snow px-3.5 py-2 rounded border border-edge hover:border-edgeLight bg-surface transition-colors">
-                Dashboard
-            </a>
-            <a href="/editor" class="font-mono text-xs font-medium bg-accent hover:bg-accentHover text-white px-4 py-2 rounded shadow-sm shadow-accent/20 transition-colors flex items-center gap-1.5">
+        <div class="header-controls">
+            <a href="/editor" class="btn-launch-editor">
+                <i class="ri-code-s-slash-line"></i>
                 <span>Launch Editor</span>
-                <span aria-hidden="true">&rarr;</span>
             </a>
+            <% if (typeof user !== "undefined" && user) { %>
+                <div class="header-divider"></div>
+                <div class="user-tag">
+                    <span class="user-tag-label"><i class="ri-user-3-line"></i> user:</span>
+                    <span class="user-tag-name"><%= user.username %></span>
+                </div>
+                <a href="/DashboardCodeEditor" class="btn-header-exit" title="Go to Dashboard">
+                    <i class="ri-dashboard-line"></i>
+                    <span>dashboard</span>
+                </a>
+                <a href="/logout" class="btn-header-exit" title="Sign Out">
+                    <i class="ri-logout-box-r-line"></i>
+                    <span>exit</span>
+                </a>
+            <% } else { %>
+                <div class="header-divider"></div>
+                <a href="/DashboardCodeEditor" class="btn-header-exit" title="Dashboard">
+                    <i class="ri-dashboard-line"></i>
+                    <span>dashboard</span>
+                </a>
+                <a href="/login" class="btn-header-exit" title="Sign In">
+                    <i class="ri-login-box-line"></i>
+                    <span>login</span>
+                </a>
+            <% } %>
         </div>
     </header>
 
-    <!-- ─── Hero Section ───────────────────────────────────────────────────── -->
-    <section class="pt-32 pb-20 px-6 max-w-6xl mx-auto w-full">
-        <!-- Live System Telemetry Banner -->
-        <div class="inline-flex flex-wrap items-center gap-3 px-3.5 py-1.5 rounded-full border border-edge bg-surface mb-8 text-2xs font-mono">
-            <span class="flex items-center gap-1.5 text-success">
-                <span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
-                <span>Codebox Sandbox Active</span>
-            </span>
-            <span class="text-edgeLight">&bull;</span>
-            <span class="text-muted">cgroup v2 Aggregate Limits</span>
-            <span class="text-edgeLight">&bull;</span>
-            <span class="text-muted">Bubblewrap 0.12.0 Non-setuid</span>
-            <span class="text-edgeLight">&bull;</span>
-            <span class="text-accent">Origin Verified</span>
-        </div>
+    <!-- ─── Main Container ──────────────────────────────────────────────────── -->
+    <main class="dashboard-main">
 
-        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-snow leading-tight max-w-4xl mb-6">
-            Cloud-native IDE engine with hardened sandboxed execution and streaming AI.
-        </h1>
-
-        <p class="text-base sm:text-lg text-muted max-w-3xl leading-relaxed mb-10">
-            A self-hosted developer workspace pairing the <strong class="text-snow font-medium">Monaco Editor</strong> core with an isolated <strong class="text-snow font-medium">cgroup v2 & Bubblewrap runtime sandbox</strong>, real-time <strong class="text-snow font-medium">LangChain AI pair programming</strong>, and enterprise-grade zero-trust access boundaries.
-        </p>
-
-        <div class="flex flex-wrap items-center gap-4">
-            <a href="/editor" class="bg-accent hover:bg-accentHover text-white font-mono text-xs px-5 py-3 rounded font-medium shadow-md shadow-accent/25 transition-colors">
-                Launch Editor Session
-            </a>
-            <a href="#architecture" class="border border-edge hover:border-edgeLight text-snow bg-surface font-mono text-xs px-5 py-3 rounded transition-colors">
-                Explore Architecture &rarr;
-            </a>
-            <a href="/DashboardCodeEditor" class="border border-transparent hover:border-edge text-muted hover:text-snow font-mono text-xs px-4 py-3 rounded transition-colors">
-                Project Dashboard
-            </a>
-        </div>
-    </section>
-
-    <!-- ─── Key Architecture Pillars Grid ──────────────────────────────────── -->
-    <section class="py-14 px-6 border-y border-edge bg-surface/40">
-        <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            
-            <div class="bg-card border border-edge p-6 rounded space-y-3">
-                <div class="font-mono text-2xs text-accent uppercase tracking-wider font-semibold">01 // EDITOR ENGINE</div>
-                <h2 class="text-base font-semibold text-snow">Monaco Core & Virtual FS</h2>
-                <p class="text-xs text-muted leading-relaxed">
-                    VS Code browser core with tree explorer, recursive directory traversal protection, multi-buffer tabs, and automatic debounced local state persistence.
-                </p>
-            </div>
-
-            <div class="bg-card border border-edge p-6 rounded space-y-3">
-                <div class="font-mono text-2xs text-accent uppercase tracking-wider font-semibold">02 // CODE EXECUTION</div>
-                <h2 class="text-base font-semibold text-snow">Codebox Container Sandbox</h2>
-                <p class="text-xs text-muted leading-relaxed">
-                    Bubblewrap 0.12.0 namespaces combined with Linux cgroup v2 subtree controller delegation and secondary `prlimit` bounds for JS, Python, C++, C, Java, Rust, and Bash.
-                </p>
-            </div>
-
-            <div class="bg-card border border-edge p-6 rounded space-y-3">
-                <div class="font-mono text-2xs text-accent uppercase tracking-wider font-semibold">03 // AI SUBSYSTEM</div>
-                <h2 class="text-base font-semibold text-snow">LangChain Tool-Calling Agent</h2>
-                <p class="text-xs text-muted leading-relaxed">
-                    Dual-channel inference (Ollama local/cloud) streaming token chunks, chain-of-thought analysis, and automated workspace file mutations over WebSockets.
-                </p>
-            </div>
-
-            <div class="bg-card border border-edge p-6 rounded space-y-3">
-                <div class="font-mono text-2xs text-accent uppercase tracking-wider font-semibold">04 // ZERO-TRUST SECURITY</div>
-                <h2 class="text-base font-semibold text-snow">Rate Limits & Origin Lockdown</h2>
-                <p class="text-xs text-muted leading-relaxed">
-                    Strict HTTP-only JWT cookies, dual-layer origin authentication, sliding-window rate limiters across HTTP/Socket, and CSP opaque-origin HTML previews.
-                </p>
-            </div>
-
-        </div>
-    </section>
-
-    <!-- ─── Interactive System Architecture Visualizer ─────────────────────── -->
-    <section id="architecture" class="py-24 px-6 max-w-6xl mx-auto w-full">
-        <div class="mb-12">
-            <span class="font-mono text-2xs text-accent uppercase tracking-widest block mb-2 font-semibold">// system topology</span>
-            <h2 class="text-2xl sm:text-3xl font-semibold text-snow">Interactive Architectural Inspector</h2>
-            <p class="text-sm text-muted mt-2 max-w-2xl">
-                Click any system component below to examine its implementation details, security boundaries, and communication protocol.
-            </p>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            <!-- Left Component Navigation -->
-            <div class="lg:col-span-5 bg-card border border-edge rounded p-4 font-mono text-xs select-none space-y-2">
-                <div class="text-dim text-2xs uppercase tracking-wider px-3 py-1 font-semibold border-b border-edge mb-2">
-                    System Architecture Layers
+        <!-- Welcome / Hero Card -->
+        <section class="welcome-card">
+            <div>
+                <div class="flex items-center gap-2 mb-2 font-mono text-2xs">
+                    <span class="inline-flex items-center gap-1.5 text-ok">
+                        <span class="w-1.5 h-1.5 rounded-full bg-ok animate-pulse"></span>
+                        Codebox Sandbox Active
+                    </span>
+                    <span class="text-edge">&bull;</span>
+                    <span class="text-muted">cgroup v2 delegated &bull; bwrap 0.12.0 &bull; LangChain pair programmer</span>
                 </div>
+                <h1 class="welcome-title">Personal Code Editor — Architecture & Systems</h1>
+                <p class="welcome-subtitle">
+                    A cloud-native web IDE pairing the Monaco Editor engine with an isolated cgroup v2 & Bubblewrap sandbox execution engine, real-time LangChain streaming AI assistance, and zero-trust security boundaries.
+                </p>
+            </div>
+            <div class="welcome-actions">
+                <a href="/editor" class="btn-action-primary">
+                    <i class="ri-play-line"></i>
+                    <span>Launch Editor</span>
+                </a>
+                <a href="/DashboardCodeEditor" class="btn-action-secondary">
+                    <i class="ri-dashboard-line"></i>
+                    <span>Workspaces</span>
+                </a>
+                <a href="https://github.com/niteshxedev-byte/codeEditor" target="_blank" rel="noopener noreferrer" class="btn-action-secondary">
+                    <i class="ri-github-line"></i>
+                    <span>GitHub</span>
+                </a>
+            </div>
+        </section>
 
-                <button type="button" class="arch-btn w-full text-left p-3 rounded border border-accent/40 bg-accent/10 text-snow transition-all flex items-center justify-between" data-target="editor-core">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-accent">&bull;</span>
-                        <span class="font-medium">Client Workspace (Monaco + SPA)</span>
-                    </div>
-                    <span class="text-2xs text-dim">Browser</span>
-                </button>
-
-                <button type="button" class="arch-btn w-full text-left p-3 rounded border border-transparent hover:border-edge text-muted hover:text-snow transition-all flex items-center justify-between" data-target="express-gateway">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-dim">&bull;</span>
-                        <span>Express.js API & Security Core</span>
-                    </div>
-                    <span class="text-2xs text-dim">Backend</span>
-                </button>
-
-                <button type="button" class="arch-btn w-full text-left p-3 rounded border border-transparent hover:border-edge text-muted hover:text-snow transition-all flex items-center justify-between" data-target="rate-limiting">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-dim">&bull;</span>
-                        <span>Sliding-Window Rate Limiter</span>
-                    </div>
-                    <span class="text-2xs text-dim">Guard</span>
-                </button>
-
-                <button type="button" class="arch-btn w-full text-left p-3 rounded border border-transparent hover:border-edge text-muted hover:text-snow transition-all flex items-center justify-between" data-target="sandbox-engine">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-dim">&bull;</span>
-                        <span>Codebox Execution Sandbox</span>
-                    </div>
-                    <span class="text-2xs text-dim">Sandbox</span>
-                </button>
-
-                <button type="button" class="arch-btn w-full text-left p-3 rounded border border-transparent hover:border-edge text-muted hover:text-snow transition-all flex items-center justify-between" data-target="ai-agent">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-dim">&bull;</span>
-                        <span>LangChain Agent & Ollama</span>
-                    </div>
-                    <span class="text-2xs text-dim">Inference</span>
-                </button>
-
-                <button type="button" class="arch-btn w-full text-left p-3 rounded border border-transparent hover:border-edge text-muted hover:text-snow transition-all flex items-center justify-between" data-target="database">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-dim">&bull;</span>
-                        <span>MongoDB Atlas & File Storage</span>
-                    </div>
-                    <span class="text-2xs text-dim">Storage</span>
-                </button>
+        <!-- ─── Core Capabilities Grid ──────────────────────────────────────── -->
+        <section id="features">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <i class="ri-terminal-box-line text-blue"></i>
+                    <span>Core Capabilities</span>
+                    <span class="section-count">(6 runtimes &bull; Monaco Engine &bull; AI Pair Agent)</span>
+                </div>
+                <a href="/editor" class="section-quick-link">
+                    <span>+ open editor</span>
+                    <i class="ri-arrow-right-line"></i>
+                </a>
             </div>
 
-            <!-- Right Detail Display Pane -->
-            <div class="lg:col-span-7 bg-card border border-edge rounded p-6 min-h-[380px] flex flex-col justify-between">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 
-                <!-- 1. Monaco Core -->
-                <div id="pane-editor-core" class="arch-pane space-y-4">
-                    <div class="flex items-center justify-between pb-3 border-b border-edge">
-                        <h3 class="font-mono text-sm font-semibold text-accent">Client Workspace (Monaco Editor Core)</h3>
-                        <span class="text-2xs font-mono px-2 py-0.5 rounded bg-edge text-dim">Frontend Layer</span>
+                <div class="item-card space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-snow font-medium flex items-center gap-2">
+                            <i class="ri-code-s-slash-line text-blue"></i>
+                            <span>Monaco Editor Core</span>
+                        </span>
+                        <span class="font-mono text-2xs text-muted">VS Code core</span>
                     </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Hosts the Monaco Editor buffer management engine. Handles tab state, keyboard shortcuts, multi-file navigation, syntax highlighting, and auto-saves workspace state to browser local storage and MongoDB Atlas.
+                    <p class="text-xs text-muted leading-relaxed font-sans">
+                        Full-featured code editing experience with multi-language syntax highlighting, virtual tab buffer management, keyboard bindings, and debounced auto-save to browser local storage.
                     </p>
-                    <div class="grid grid-cols-2 gap-4 font-mono text-xs pt-2">
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">SYNTAX ENGINE</span>
-                            <span class="text-snow">Monaco Language Models</span>
-                        </div>
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">LOCAL PERSISTENCE</span>
-                            <span class="text-snow">Debounced localStorage (350ms)</span>
-                        </div>
-                    </div>
-                    <div class="font-mono text-xs bg-void p-3 rounded border border-edge text-dim overflow-x-auto">
-                        <span class="text-muted">Editor Bindings:</span> JS (63), Python (71), C++ (54), C (50), Java (62), Rust (73), Bash (46)
-                    </div>
                 </div>
 
-                <!-- 2. Express Gateway -->
-                <div id="pane-express-gateway" class="arch-pane hidden space-y-4">
-                    <div class="flex items-center justify-between pb-3 border-b border-edge">
-                        <h3 class="font-mono text-sm font-semibold text-accent">Express.js API & Security Core</h3>
-                        <span class="text-2xs font-mono px-2 py-0.5 rounded bg-edge text-dim">Application Backend</span>
+                <div class="item-card space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-snow font-medium flex items-center gap-2">
+                            <i class="ri-shield-check-line text-blue"></i>
+                            <span>Codebox Container Sandbox</span>
+                        </span>
+                        <span class="font-mono text-2xs text-ok">cgroup v2</span>
                     </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Central application runtime. Verifies signed JWT cookies, validates input formats, routes project management requests, handles multipart zip and PDF file uploads, and proxies authenticated execution calls to Codebox.
+                    <p class="text-xs text-muted leading-relaxed font-sans">
+                        Runs JavaScript, Python, C++, C, Java, Rust, and Bash inside hardened Bubblewrap namespaces governed by Linux cgroup v2 subtree aggregate controls and Seccomp-BPF filters.
                     </p>
-                    <div class="grid grid-cols-2 gap-4 font-mono text-xs pt-2">
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">AUTH VERIFICATION</span>
-                            <span class="text-snow">httpOnly JWT + Bearer Header</span>
-                        </div>
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">PROXY TRUST</span>
-                            <span class="text-snow">app.set('trust proxy', 1)</span>
-                        </div>
-                    </div>
-                    <div class="font-mono text-xs bg-void p-3 rounded border border-edge text-dim overflow-x-auto">
-                        <span class="text-muted">Security Headers:</span> nosniff, SAMEORIGIN, strict-origin-when-cross-origin, Permissions-Policy
-                    </div>
                 </div>
 
-                <!-- 3. Rate Limiting -->
-                <div id="pane-rate-limiting" class="arch-pane hidden space-y-4">
-                    <div class="flex items-center justify-between pb-3 border-b border-edge">
-                        <h3 class="font-mono text-sm font-semibold text-accent">Sliding-Window Rate Limiting Engine</h3>
-                        <span class="text-2xs font-mono px-2 py-0.5 rounded bg-edge text-dim">Defensive Subsystem</span>
+                <div class="item-card space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-snow font-medium flex items-center gap-2">
+                            <i class="ri-robot-2-line text-blue"></i>
+                            <span>LangChain AI Agent</span>
+                        </span>
+                        <span class="font-mono text-2xs text-muted">Ollama & Cloud</span>
                     </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Mitigates credential brute-forcing, code execution spam, and AI token quota exhaustion. Employs `express-rate-limit` with IPv6 subnet normalization and an in-memory sliding-window limiter for WebSockets.
+                    <p class="text-xs text-muted leading-relaxed font-sans">
+                        Real-time AI pair programmer streaming token chunks, chain-of-thought reasoning, and autonomous workspace tools (create, inspect, update files) over authenticated Socket.IO channels.
                     </p>
-                    <div class="grid grid-cols-2 gap-4 font-mono text-xs pt-2">
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">LOGIN LIMIT</span>
-                            <span class="text-snow">10 attempts / 15 mins (IP)</span>
-                        </div>
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">EXECUTION LIMIT</span>
-                            <span class="text-snow">20 runs / min (User ID / IP)</span>
-                        </div>
-                    </div>
-                    <div class="font-mono text-xs bg-void p-3 rounded border border-edge text-dim overflow-x-auto">
-                        <span class="text-muted">Socket AI Limiter:</span> Sliding timestamp array with unref'd GC sweep every 2 minutes
-                    </div>
                 </div>
 
-                <!-- 4. Sandbox Engine -->
-                <div id="pane-sandbox-engine" class="arch-pane hidden space-y-4">
-                    <div class="flex items-center justify-between pb-3 border-b border-edge">
-                        <h3 class="font-mono text-sm font-semibold text-accent">Codebox Sandboxed Execution Engine</h3>
-                        <span class="text-2xs font-mono px-2 py-0.5 rounded bg-edge text-dim">Compute Isolation</span>
+                <div class="item-card space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-snow font-medium flex items-center gap-2">
+                            <i class="ri-window-line text-blue"></i>
+                            <span>Live HTML Sandbox Preview</span>
+                        </span>
+                        <span class="font-mono text-2xs text-muted">Opaque CSP</span>
                     </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Isolated container service compiled in Rust (Axum). Drops root privileges to user `10001 (engine)` after delegating cgroup v2 subtree controllers. Spawns compilers and runtimes inside Bubblewrap 0.12.0 namespaces with Seccomp-BPF and `prlimit` backstops.
+                    <p class="text-xs text-muted leading-relaxed font-sans">
+                        Renders full client-side HTML, CSS, and JavaScript components in an isolated sandboxed iframe with strict Content-Security-Policy that strips access to application cookies and credentials.
                     </p>
-                    <div class="grid grid-cols-2 gap-4 font-mono text-xs pt-2">
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">CONTAINERIZATION</span>
-                            <span class="text-snow">bwrap non-setuid namespaces</span>
-                        </div>
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">CGROUP V2 CONTROLLERS</span>
-                            <span class="text-snow">cpu, io, memory, pids</span>
-                        </div>
-                    </div>
-                    <div class="font-mono text-xs bg-void p-3 rounded border border-edge text-dim overflow-x-auto">
-                        <span class="text-muted">Origin Lockdown:</span> Validates PUBLIC_URL origin & Bearer token on every invocation
-                    </div>
                 </div>
 
-                <!-- 5. AI Agent -->
-                <div id="pane-ai-agent" class="arch-pane hidden space-y-4">
-                    <div class="flex items-center justify-between pb-3 border-b border-edge">
-                        <h3 class="font-mono text-sm font-semibold text-accent">LangChain Agent & Ollama Inference</h3>
-                        <span class="text-2xs font-mono px-2 py-0.5 rounded bg-edge text-dim">AI Pair Programmer</span>
+                <div class="item-card space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-snow font-medium flex items-center gap-2">
+                            <i class="ri-folder-zip-line text-blue"></i>
+                            <span>Workspace Archiving & PDF</span>
+                        </span>
+                        <span class="font-mono text-2xs text-muted">MongoDB Atlas</span>
                     </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Intelligent code assistant using LangChain structured tool calling. Probes `localhost:11434` for low-latency local GPU/CPU execution before falling back to Ollama Cloud. Emits real-time reasoning steps, token chunks, and file creation/update actions.
+                    <p class="text-xs text-muted leading-relaxed font-sans">
+                        Manage multiple virtual code projects, import/export full workspace archives as ZIP files, and generate formatted PDF code documentation with syntax highlighting directly from the editor toolbar.
                     </p>
-                    <div class="grid grid-cols-2 gap-4 font-mono text-xs pt-2">
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">TOOL CALLING</span>
-                            <span class="text-snow">create_file, update_file, read_file</span>
-                        </div>
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">STREAMING PROTOCOL</span>
-                            <span class="text-snow">Socket.IO full-duplex events</span>
-                        </div>
-                    </div>
-                    <div class="font-mono text-xs bg-void p-3 rounded border border-edge text-dim overflow-x-auto">
-                        <span class="text-muted">Primary Models:</span> qwen2.5-coder:7b, llama3.2:1b, deepseek-coder
-                    </div>
                 </div>
 
-                <!-- 6. Database -->
-                <div id="pane-database" class="arch-pane hidden space-y-4">
-                    <div class="flex items-center justify-between pb-3 border-b border-edge">
-                        <h3 class="font-mono text-sm font-semibold text-accent">MongoDB Atlas & User File Storage</h3>
-                        <span class="text-2xs font-mono px-2 py-0.5 rounded bg-edge text-dim">Persistence Layer</span>
+                <div class="item-card space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-snow font-medium flex items-center gap-2">
+                            <i class="ri-lock-2-line text-blue"></i>
+                            <span>Zero-Trust Security Matrix</span>
+                        </span>
+                        <span class="font-mono text-2xs text-muted">Rate Limited</span>
                     </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Stores account credentials, project metadata, virtual directory trees, and references to exported workspace archives. Enforces strictly partitioned user storage paths to eliminate path traversal and cross-tenant leakage.
+                    <p class="text-xs text-muted leading-relaxed font-sans">
+                        Guarded with httpOnly JWT cookies, bcrypt password hashing (12 rounds), sliding-window rate limiters across all API and WebSocket entrypoints, and strict PUBLIC_URL origin lockdown.
                     </p>
-                    <div class="grid grid-cols-2 gap-4 font-mono text-xs pt-2">
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">SCHEMAS</span>
-                            <span class="text-snow">User, Project, Pdf (Mongoose)</span>
-                        </div>
-                        <div class="bg-surface p-3 rounded border border-edge">
-                            <span class="text-2xs text-dim block mb-1">STORAGE ISOLATION</span>
-                            <span class="text-snow">Per-user isolated subdirectories</span>
-                        </div>
-                    </div>
-                    <div class="font-mono text-xs bg-void p-3 rounded border border-edge text-dim overflow-x-auto">
-                        <span class="text-muted">Upload Filters:</span> Whitelisted extensions (.zip, .json, .pdf) with 10MB limits
-                    </div>
                 </div>
 
-                <div class="pt-4 border-t border-edge flex items-center justify-between text-2xs font-mono text-dim">
-                    <span>Click another component to inspect its architecture.</span>
-                    <span class="text-accent">Production Ready</span>
+            </div>
+        </section>
+
+        <!-- ─── Interactive Architecture Inspector ──────────────────────────── -->
+        <section id="architecture">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <i class="ri-cpu-line text-blue"></i>
+                    <span>System Architecture</span>
+                    <span class="section-count">(Interactive Component Inspector)</span>
                 </div>
+                <span class="font-mono text-2xs text-muted">Click any layer to inspect</span>
             </div>
 
-        </div>
-    </section>
-
-    <!-- ─── Execution Sandbox Deep-Dive ────────────────────────────────────── -->
-    <section id="sandbox" class="py-24 px-6 border-t border-edge bg-surface/30">
-        <div class="max-w-6xl mx-auto">
-            <div class="mb-12">
-                <span class="font-mono text-2xs text-accent uppercase tracking-widest block mb-2 font-semibold">// sandboxed compute</span>
-                <h2 class="text-2xl sm:text-3xl font-semibold text-snow">4-Tier Containment Architecture</h2>
-                <p class="text-sm text-muted mt-2 max-w-2xl">
-                    Every code execution job is isolated through defense-in-depth boundaries designed to prevent container breakouts, denial of service, and ambient privilege leakage.
-                </p>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
-                <div class="bg-card border border-edge p-6 rounded space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="font-mono text-xs text-snow font-medium">1. Bubblewrap 0.12.0 Namespaces</span>
-                        <span class="text-2xs font-mono text-success bg-success/10 px-2 py-0.5 rounded border border-success/20">Enforced</span>
-                    </div>
-                    <p class="text-xs text-muted leading-relaxed">
-                        Spawns runtimes inside dedicated PID, IPC, UTS, and mount namespaces without setuid permissions. The host filesystem is mounted strictly read-only (`/usr`, `/lib`, `/bin`), `/tmp` is provisioned as an isolated `tmpfs`, and user workspaces are bound with noexec flags during execution.
-                    </p>
+                <!-- Left Tabs Menu -->
+                <div class="lg:col-span-5 flex flex-col gap-2">
+                    <button type="button" class="interactive-tab-btn active" data-target="tab-editor">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ri-terminal-window-line text-blue"></i>
+                            <span>Client Workspace (Monaco + SPA)</span>
+                        </div>
+                        <span class="text-2xs text-muted">Browser</span>
+                    </button>
+
+                    <button type="button" class="interactive-tab-btn" data-target="tab-gateway">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ri-server-line text-muted"></i>
+                            <span>Express.js API & Gateway Core</span>
+                        </div>
+                        <span class="text-2xs text-muted">Backend</span>
+                    </button>
+
+                    <button type="button" class="interactive-tab-btn" data-target="tab-ratelimit">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ri-shield-line text-muted"></i>
+                            <span>Sliding-Window Rate Limiter</span>
+                        </div>
+                        <span class="text-2xs text-muted">Guard</span>
+                    </button>
+
+                    <button type="button" class="interactive-tab-btn" data-target="tab-sandbox">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ri-box-3-line text-muted"></i>
+                            <span>Codebox Execution Sandbox</span>
+                        </div>
+                        <span class="text-2xs text-muted">Compute</span>
+                    </button>
+
+                    <button type="button" class="interactive-tab-btn" data-target="tab-ai">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ri-sparkling-2-line text-muted"></i>
+                            <span>LangChain AI Agent (Ollama)</span>
+                        </div>
+                        <span class="text-2xs text-muted">Inference</span>
+                    </button>
+
+                    <button type="button" class="interactive-tab-btn" data-target="tab-database">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ri-database-2-line text-muted"></i>
+                            <span>MongoDB Atlas & File Storage</span>
+                        </div>
+                        <span class="text-2xs text-muted">Storage</span>
+                    </button>
                 </div>
 
-                <div class="bg-card border border-edge p-6 rounded space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="font-mono text-xs text-snow font-medium">2. Linux cgroup v2 Controllers</span>
-                        <span class="text-2xs font-mono text-success bg-success/10 px-2 py-0.5 rounded border border-success/20">Delegated</span>
+                <!-- Right Detail Pane -->
+                <div class="lg:col-span-7 interactive-pane">
+                    
+                    <!-- 1. Monaco Editor -->
+                    <div id="pane-tab-editor" class="arch-content space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-edge">
+                            <h3 class="font-mono text-sm font-medium text-snow">Client Workspace (Monaco Editor Engine)</h3>
+                            <span class="font-mono text-2xs text-blue bg-blue/10 px-2 py-0.5 rounded border border-blue/20">Frontend Layer</span>
+                        </div>
+                        <p class="text-xs text-muted leading-relaxed font-sans">
+                            Powers the code editor using VS Code's core editor engine. Handles multi-model buffer switching, real-time syntax coloring, interactive execution terminal with tabbed stdout/stderr, virtual file system tree, and debounced auto-save into localStorage.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3 font-mono text-xs pt-1">
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">SYNTAX ENGINE</span>
+                                <span class="text-snow">Monaco Language Models</span>
+                            </div>
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">LOCAL PERSISTENCE</span>
+                                <span class="text-snow">Debounced localStorage (350ms)</span>
+                            </div>
+                        </div>
+                        <div class="font-mono text-2xs bg-void p-3 rounded border border-edge text-muted overflow-x-auto">
+                            <span class="text-snow">Supported Editor Mappings:</span> JS (63), Python (71), C++ (54), C (50), Java (62), Rust (73), Bash (46)
+                        </div>
                     </div>
-                    <p class="text-xs text-muted leading-relaxed">
-                        The container daemon creates an unprivileged `$ENGINE_CGROUP/server` scope owned by UID `10001 (engine)` before dropping privileges. Child runner processes are attached to sub-cgroups (`cg_e_xxx`) with aggregate limits on memory (`memory.max`), process count (`pids.max`), and CPU time, eliminating `EACCES (os error 13)` permission errors.
-                    </p>
-                </div>
 
-                <div class="bg-card border border-edge p-6 rounded space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="font-mono text-xs text-snow font-medium">3. Seccomp-BPF & prlimit Guard</span>
-                        <span class="text-2xs font-mono text-success bg-success/10 px-2 py-0.5 rounded border border-success/20">Filtered</span>
+                    <!-- 2. Express Gateway -->
+                    <div id="pane-tab-gateway" class="arch-content hidden space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-edge">
+                            <h3 class="font-mono text-sm font-medium text-snow">Express.js API & Gateway Core</h3>
+                            <span class="font-mono text-2xs text-blue bg-blue/10 px-2 py-0.5 rounded border border-blue/20">Application Backend</span>
+                        </div>
+                        <p class="text-xs text-muted leading-relaxed font-sans">
+                            Central application server built with Node.js and Express 5. Verifies HMAC-SHA256 JWT cookies, routes project management requests, handles multipart zip and PDF file uploads, and proxies authenticated execution requests to Codebox with Bearer headers.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3 font-mono text-xs pt-1">
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">AUTH VERIFICATION</span>
+                                <span class="text-snow">httpOnly JWT + Bearer Header</span>
+                            </div>
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">REVERSE PROXY</span>
+                                <span class="text-snow">app.set('trust proxy', 1)</span>
+                            </div>
+                        </div>
+                        <div class="font-mono text-2xs bg-void p-3 rounded border border-edge text-muted overflow-x-auto">
+                            <span class="text-snow">Security Headers:</span> nosniff, SAMEORIGIN, strict-origin-when-cross-origin, Permissions-Policy
+                        </div>
                     </div>
-                    <p class="text-xs text-muted leading-relaxed">
-                        Enforces kernel-level BPF syscall filters that immediately kill processes attempting `ptrace`, `chroot`, `mount`, or raw socket creation. Secondary `prlimit` limits enforce maximum open file descriptors (512) and process counts (96-128) per runner invocation.
-                    </p>
-                </div>
 
-                <div class="bg-card border border-edge p-6 rounded space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="font-mono text-xs text-snow font-medium">4. PUBLIC_URL Origin Lockdown</span>
-                        <span class="text-2xs font-mono text-success bg-success/10 px-2 py-0.5 rounded border border-success/20">Locked</span>
+                    <!-- 3. Rate Limiting -->
+                    <div id="pane-tab-ratelimit" class="arch-content hidden space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-edge">
+                            <h3 class="font-mono text-sm font-medium text-snow">Sliding-Window Rate Limiting Subsystem</h3>
+                            <span class="font-mono text-2xs text-blue bg-blue/10 px-2 py-0.5 rounded border border-blue/20">Defensive Shield</span>
+                        </div>
+                        <p class="text-xs text-muted leading-relaxed font-sans">
+                            Guards against brute-force account attacks, execution engine flooding, and LLM quota exhaustion. Uses `express-rate-limit` with IPv6 subnet normalization and an unref'd garbage-collected in-memory sliding window for WebSockets.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3 font-mono text-xs pt-1">
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">LOGIN LIMIT</span>
+                                <span class="text-snow">10 attempts / 15m (IP)</span>
+                            </div>
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">EXECUTION LIMIT</span>
+                                <span class="text-snow">20 runs / 1m (User / IP)</span>
+                            </div>
+                        </div>
+                        <div class="font-mono text-2xs bg-void p-3 rounded border border-edge text-muted overflow-x-auto">
+                            <span class="text-snow">Socket AI Guard:</span> Sliding timestamp array with automatic GC every 2 minutes
+                        </div>
                     </div>
-                    <p class="text-xs text-muted leading-relaxed">
-                        The execution engine rejects all untrusted browser requests with `403 Forbidden` if their `Origin` or `Referer` headers do not match the authorized `PUBLIC_URL` policy. Backend server-to-server calls authenticate via `Authorization: Bearer <AUTH_TOKEN>`.
-                    </p>
+
+                    <!-- 4. Sandbox Engine -->
+                    <div id="pane-tab-sandbox" class="arch-content hidden space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-edge">
+                            <h3 class="font-mono text-sm font-medium text-snow">Codebox Sandboxed Execution Engine</h3>
+                            <span class="font-mono text-2xs text-blue bg-blue/10 px-2 py-0.5 rounded border border-blue/20">Compute Isolation</span>
+                        </div>
+                        <p class="text-xs text-muted leading-relaxed font-sans">
+                            Containerized microservice built in Rust (Axum). Drops root privileges to user `10001 (engine)` after delegating cgroup v2 subtree controllers. Spawns compilers and interpreters inside non-setuid Bubblewrap namespaces with Seccomp-BPF and `prlimit` limits.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3 font-mono text-xs pt-1">
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">CONTAINERIZATION</span>
+                                <span class="text-snow">Bubblewrap 0.12.0 namespaces</span>
+                            </div>
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">CGROUP V2 CONTROLLERS</span>
+                                <span class="text-snow">cpu, io, memory, pids</span>
+                            </div>
+                        </div>
+                        <div class="font-mono text-2xs bg-void p-3 rounded border border-edge text-muted overflow-x-auto">
+                            <span class="text-snow">Origin Lockdown:</span> Validates PUBLIC_URL origin and token on every execution request
+                        </div>
+                    </div>
+
+                    <!-- 5. LangChain AI -->
+                    <div id="pane-tab-ai" class="arch-content hidden space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-edge">
+                            <h3 class="font-mono text-sm font-medium text-snow">LangChain AI Assistant & Ollama</h3>
+                            <span class="font-mono text-2xs text-blue bg-blue/10 px-2 py-0.5 rounded border border-blue/20">AI Pair Programmer</span>
+                        </div>
+                        <p class="text-xs text-muted leading-relaxed font-sans">
+                            Intelligent pair programming agent supporting tool calling. Automatically detects local GPU/CPU models on `http://localhost:11434` for zero-latency offline coding, with transparent fallback to Ollama Cloud.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3 font-mono text-xs pt-1">
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">TOOL CALLING</span>
+                                <span class="text-snow">create_file, update_file, read_file</span>
+                            </div>
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">STREAMING PROTOCOL</span>
+                                <span class="text-snow">Socket.IO full-duplex events</span>
+                            </div>
+                        </div>
+                        <div class="font-mono text-2xs bg-void p-3 rounded border border-edge text-muted overflow-x-auto">
+                            <span class="text-snow">Recommended Models:</span> qwen2.5-coder:7b (deep coding), llama3.2:1b (fast reasoning)
+                        </div>
+                    </div>
+
+                    <!-- 6. Database -->
+                    <div id="pane-tab-database" class="arch-content hidden space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-edge">
+                            <h3 class="font-mono text-sm font-medium text-snow">MongoDB Atlas & User File Storage</h3>
+                            <span class="font-mono text-2xs text-blue bg-blue/10 px-2 py-0.5 rounded border border-blue/20">Persistence Layer</span>
+                        </div>
+                        <p class="text-xs text-muted leading-relaxed font-sans">
+                            Stores user credentials, workspace project metadata, virtual directory trees, and generated PDF exports. Enforces strict per-user file system boundaries with canonical path validation to prevent directory traversal.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3 font-mono text-xs pt-1">
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">SCHEMAS</span>
+                                <span class="text-snow">User, Project, Pdf (Mongoose)</span>
+                            </div>
+                            <div class="bg-void p-3 rounded border border-edge">
+                                <span class="text-2xs text-muted block mb-1">STORAGE ISOLATION</span>
+                                <span class="text-snow">Per-user isolated subdirectories</span>
+                            </div>
+                        </div>
+                        <div class="font-mono text-2xs bg-void p-3 rounded border border-edge text-muted overflow-x-auto">
+                            <span class="text-snow">Upload Limits:</span> 10MB file limit with strict extension whitelist (.zip, .json, .pdf)
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-edge flex items-center justify-between font-mono text-2xs text-muted">
+                        <span>Select another component on the left to inspect</span>
+                        <span class="text-ok">Status: Operational</span>
+                    </div>
                 </div>
 
             </div>
+        </section>
 
-            <!-- Supported Runtimes Matrix -->
-            <div class="mt-12 bg-card border border-edge rounded overflow-hidden">
-                <div class="p-4 border-b border-edge font-mono text-xs text-snow font-medium flex items-center justify-between">
+        <!-- ─── Execution Sandbox Runtimes Matrix ───────────────────────────── -->
+        <section id="sandbox">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <i class="ri-shield-check-line text-blue"></i>
                     <span>Sandboxed Language Runtimes</span>
-                    <span class="text-2xs text-dim">Codebox Standard IDs</span>
+                    <span class="section-count">(Codebox Standard Runtimes & IDs)</span>
                 </div>
+                <span class="font-mono text-2xs text-muted">Multi-language sandbox</span>
+            </div>
+
+            <div class="item-card overflow-hidden p-0">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left font-mono text-xs">
-                        <thead class="bg-surface text-dim border-b border-edge text-2xs uppercase">
+                        <thead class="bg-void text-muted border-b border-edge text-2xs uppercase">
                             <tr>
-                                <th class="p-3">Language</th>
-                                <th class="p-3">Engine ID</th>
-                                <th class="p-3">Compiler / Interpreter</th>
-                                <th class="p-3">Isolation Profile</th>
-                                <th class="p-3">Output Handling</th>
+                                <th class="p-3.5">Language</th>
+                                <th class="p-3.5">Engine ID</th>
+                                <th class="p-3.5">Compiler / Interpreter</th>
+                                <th class="p-3.5">Isolation Profile</th>
+                                <th class="p-3.5">Output Handling</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-edge text-muted">
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">JavaScript (Node.js)</td>
-                                <td class="p-3 text-accent font-semibold">63</td>
-                                <td class="p-3">Node.js v22.x (V8)</td>
-                                <td class="p-3">Profile E (Read-Only FS)</td>
-                                <td class="p-3 text-success">Captured stdout/stderr</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">JavaScript (Node.js)</td>
+                                <td class="p-3.5 text-blue font-semibold">63</td>
+                                <td class="p-3.5">Node.js v22.x (V8)</td>
+                                <td class="p-3.5">Profile E (Read-Only FS)</td>
+                                <td class="p-3.5 text-ok">stdout / stderr</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Python (3.x)</td>
-                                <td class="p-3 text-accent font-semibold">71</td>
-                                <td class="p-3">Python 3.12+ (CPython)</td>
-                                <td class="p-3">Profile E (Read-Only FS)</td>
-                                <td class="p-3 text-success">Captured stdout/stderr</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Python (3.x)</td>
+                                <td class="p-3.5 text-blue font-semibold">71</td>
+                                <td class="p-3.5">Python 3.12+ (CPython)</td>
+                                <td class="p-3.5">Profile E (Read-Only FS)</td>
+                                <td class="p-3.5 text-ok">stdout / stderr</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">C++ (G++)</td>
-                                <td class="p-3 text-accent font-semibold">54</td>
-                                <td class="p-3">G++ (std=c++17, -O2)</td>
-                                <td class="p-3">Profile C &rarr; Profile E</td>
-                                <td class="p-3 text-success">Compile output + runtime stdout</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">C++ (G++)</td>
+                                <td class="p-3.5 text-blue font-semibold">54</td>
+                                <td class="p-3.5">G++ (std=c++17, -O2)</td>
+                                <td class="p-3.5">Profile C &rarr; Profile E</td>
+                                <td class="p-3.5 text-ok">Compile + run stdout</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">C (GCC)</td>
-                                <td class="p-3 text-accent font-semibold">50</td>
-                                <td class="p-3">GCC (-O2)</td>
-                                <td class="p-3">Profile C &rarr; Profile E</td>
-                                <td class="p-3 text-success">Compile output + runtime stdout</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">C (GCC)</td>
+                                <td class="p-3.5 text-blue font-semibold">50</td>
+                                <td class="p-3.5">GCC (-O2)</td>
+                                <td class="p-3.5">Profile C &rarr; Profile E</td>
+                                <td class="p-3.5 text-ok">Compile + run stdout</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Java (OpenJDK)</td>
-                                <td class="p-3 text-accent font-semibold">62</td>
-                                <td class="p-3">OpenJDK 21 (javac & java)</td>
-                                <td class="p-3">Profile C &rarr; Profile E</td>
-                                <td class="p-3 text-success">Auto-wraps class to Main.java</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Java (OpenJDK)</td>
+                                <td class="p-3.5 text-blue font-semibold">62</td>
+                                <td class="p-3.5">OpenJDK 21 (javac & java)</td>
+                                <td class="p-3.5">Profile C &rarr; Profile E</td>
+                                <td class="p-3.5 text-ok">Auto-wraps class to Main</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Rust (rustc)</td>
-                                <td class="p-3 text-accent font-semibold">73</td>
-                                <td class="p-3">rustc (-O optimizations)</td>
-                                <td class="p-3">Profile C &rarr; Profile E</td>
-                                <td class="p-3 text-success">Compile output + runtime stdout</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Rust (rustc)</td>
+                                <td class="p-3.5 text-blue font-semibold">73</td>
+                                <td class="p-3.5">rustc (-O optimizations)</td>
+                                <td class="p-3.5">Profile C &rarr; Profile E</td>
+                                <td class="p-3.5 text-ok">Compile + run stdout</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Bash</td>
-                                <td class="p-3 text-accent font-semibold">46</td>
-                                <td class="p-3">GNU Bash (Strict sandbox)</td>
-                                <td class="p-3">Profile E (Read-Only FS)</td>
-                                <td class="p-3 text-success">Captured stdout/stderr</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Bash</td>
+                                <td class="p-3.5 text-blue font-semibold">46</td>
+                                <td class="p-3.5">GNU Bash (Strict sandbox)</td>
+                                <td class="p-3.5">Profile E (Read-Only FS)</td>
+                                <td class="p-3.5 text-ok">stdout / stderr</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ─── AI Assistant Streaming Subsystem ───────────────────────────────── -->
-    <section id="ai-assistant" class="py-24 px-6 max-w-6xl mx-auto w-full">
-        <div class="mb-12">
-            <span class="font-mono text-2xs text-accent uppercase tracking-widest block mb-2 font-semibold">// real-time assistant</span>
-            <h2 class="text-2xl sm:text-3xl font-semibold text-snow">LangChain AI Pair Programmer</h2>
-            <p class="text-sm text-muted mt-2 max-w-2xl">
-                Integrated pair programming agent with structured tool execution. Automatically prioritizes local offline inference if Ollama is running locally, falling back to Ollama Cloud.
-            </p>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 font-mono text-xs">
-            
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="font-semibold text-snow">1. Token & Thought Streaming</span>
-                    <span class="text-2xs text-accent bg-accent/10 px-2 py-0.5 rounded">WebSocket</span>
+        <!-- ─── Local AI Inference (Ollama) ─────────────────────────────────── -->
+        <section id="ai">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <i class="ri-robot-2-line text-blue"></i>
+                    <span>Running Local AI with Ollama</span>
+                    <span class="section-count">(Zero-latency &bull; Private GPU/CPU inference)</span>
                 </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    Emits real-time Markdown chunks via <code class="text-snow">ai_chunk</code> and internal reasoning tokens via <code class="text-snow">ai_thought</code>, allowing developers to see the agent's problem-solving progress live.
-                </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    socket.on("ai_chunk", renderChunk);<br>
-                    socket.on("ai_thought", renderThought);
-                </div>
+                <span class="font-mono text-2xs text-muted">Offline capable</span>
             </div>
 
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="font-semibold text-snow">2. Structured Tool Calling</span>
-                    <span class="text-2xs text-accent bg-accent/10 px-2 py-0.5 rounded">Autonomous</span>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 font-mono text-xs">
+                
+                <div class="item-card space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-snow font-medium">1. Install Ollama</span>
+                        <span class="text-2xs text-blue">Setup</span>
+                    </div>
+                    <div class="bg-void p-3 rounded border border-edge text-snow select-all overflow-x-auto text-2xs">
+                        curl -fsSL https://ollama.com/install.sh | sh
+                    </div>
+                    <p class="text-2xs text-muted font-sans leading-relaxed">
+                        For Linux and macOS. Windows users can download the native installer from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" class="text-blue hover:underline">ollama.com</a>.
+                    </p>
                 </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    The agent can create, inspect, and update workspace files autonomously. Actions are emitted over <code class="text-snow">ai_tool_call</code> and applied directly into Monaco tabs upon user confirmation.
-                </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    create_file(filename, code)<br>
-                    update_file(fileId, content)
+
+                <div class="item-card space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-snow font-medium">2. Pull a Code Model</span>
+                        <span class="text-2xs text-blue">Model</span>
+                    </div>
+                    <div class="bg-void p-3 rounded border border-edge text-snow select-all overflow-x-auto space-y-1 text-2xs">
+                        <div>ollama pull qwen2.5-coder:7b</div>
+                        <div class="text-muted"># or light model:</div>
+                        <div>ollama pull llama3.2:1b</div>
+                    </div>
+                    <p class="text-2xs text-muted font-sans leading-relaxed">
+                        Choose <code class="text-snow">qwen2.5-coder</code> for deep coding and reasoning or <code class="text-snow">llama3.2:1b</code> for fast, lightweight responses.
+                    </p>
                 </div>
+
+                <div class="item-card space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-snow font-medium">3. Start Service</span>
+                        <span class="text-2xs text-ok">Active</span>
+                    </div>
+                    <div class="bg-void p-3 rounded border border-edge text-snow select-all overflow-x-auto text-2xs">
+                        ollama serve
+                    </div>
+                    <p class="text-2xs text-muted font-sans leading-relaxed">
+                        Starts the local server on <code class="text-snow">localhost:11434</code>. The editor automatically prioritizes local models over cloud API endpoints.
+                    </p>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ─── Security & Rate Limiting Policy ─────────────────────────────── -->
+        <section id="security">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <i class="ri-lock-2-line text-blue"></i>
+                    <span>Security & Rate Limiting Policy</span>
+                    <span class="section-count">(Defense-in-depth matrix)</span>
+                </div>
+                <span class="font-mono text-2xs text-muted">Strictly enforced</span>
             </div>
 
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="font-semibold text-snow">3. Local & Cloud Flexibility</span>
-                    <span class="text-2xs text-accent bg-accent/10 px-2 py-0.5 rounded">Hybrid</span>
-                </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    Runs models completely offline on your host machine (<code class="text-snow">localhost:11434</code>) or routes to high-speed cloud endpoints when offline hardware is unavailable.
-                </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    ollama pull qwen2.5-coder:7b<br>
-                    ollama pull llama3.2:1b
-                </div>
-            </div>
-
-        </div>
-    </section>
-
-    <!-- ─── Security & Rate Limiting Matrix ────────────────────────────────── -->
-    <section id="security" class="py-24 px-6 border-t border-edge bg-surface/30">
-        <div class="max-w-6xl mx-auto">
-            <div class="mb-12">
-                <span class="font-mono text-2xs text-accent uppercase tracking-widest block mb-2 font-semibold">// access defense</span>
-                <h2 class="text-2xl sm:text-3xl font-semibold text-snow">Security Architecture & Rate Limits</h2>
-                <p class="text-sm text-muted mt-2 max-w-2xl">
-                    Every route, upload boundary, and execution handler is guarded against unauthorized access, brute-forcing, and resource exhaustion.
-                </p>
-            </div>
-
-            <div class="bg-card border border-edge rounded overflow-hidden">
-                <div class="p-4 border-b border-edge font-mono text-xs text-snow font-medium">
-                    Defense-in-Depth Implementation Checklist
-                </div>
+            <div class="item-card overflow-hidden p-0">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left font-mono text-xs">
-                        <thead class="bg-surface text-dim border-b border-edge text-2xs uppercase">
+                        <thead class="bg-void text-muted border-b border-edge text-2xs uppercase">
                             <tr>
-                                <th class="p-3">Component / Vector</th>
-                                <th class="p-3">Mechanism</th>
-                                <th class="p-3">Policy / Threshold</th>
-                                <th class="p-3">Enforcement Action</th>
+                                <th class="p-3.5">Protected Boundary</th>
+                                <th class="p-3.5">Mechanism</th>
+                                <th class="p-3.5">Quota / Rule</th>
+                                <th class="p-3.5">Enforcement Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-edge text-muted">
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Authentication Session</td>
-                                <td class="p-3">Signed JWT Cookie (HMAC-SHA256)</td>
-                                <td class="p-3">7-day TTL, httpOnly, sameSite: Lax</td>
-                                <td class="p-3 text-warning">Redirects or 401 Unauthorized</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Authentication Session</td>
+                                <td class="p-3.5">Signed JWT Cookie (HMAC-SHA256)</td>
+                                <td class="p-3.5">7-day TTL, httpOnly, sameSite: Lax</td>
+                                <td class="p-3.5 text-snow">Redirects to /login or 401</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Password Storage</td>
-                                <td class="p-3">bcryptjs Salting</td>
-                                <td class="p-3">12 Cost Factor Rounds</td>
-                                <td class="p-3 text-success">Lengths bounded to 8-128 chars</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Password Storage</td>
+                                <td class="p-3.5">bcryptjs Salting</td>
+                                <td class="p-3.5">12 Cost Factor Rounds</td>
+                                <td class="p-3.5 text-ok">Length bounded to 8-128 chars</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Login Rate Limiter</td>
-                                <td class="p-3">express-rate-limit</td>
-                                <td class="p-3">10 attempts / 15 minutes per IP</td>
-                                <td class="p-3 text-danger">429 Too Many Requests</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">User Authentication Limiter</td>
+                                <td class="p-3.5">express-rate-limit</td>
+                                <td class="p-3.5">10 attempts / 15 minutes per IP</td>
+                                <td class="p-3.5 text-danger">429 Too Many Requests</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Registration Limiter</td>
-                                <td class="p-3">express-rate-limit</td>
-                                <td class="p-3">5 accounts / 2 hours per IP</td>
-                                <td class="p-3 text-danger">429 Too Many Requests</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Registration Limiter</td>
+                                <td class="p-3.5">express-rate-limit</td>
+                                <td class="p-3.5">5 accounts / 2 hours per IP</td>
+                                <td class="p-3.5 text-danger">429 Too Many Requests</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Execution Engine Limiter</td>
-                                <td class="p-3">express-rate-limit + ipKeyGenerator</td>
-                                <td class="p-3">20 executions / minute per user/IP</td>
-                                <td class="p-3 text-danger">429 "Rate Limited" JSON status</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Execution Engine Limiter</td>
+                                <td class="p-3.5">express-rate-limit + ipKeyGenerator</td>
+                                <td class="p-3.5">20 executions / minute per user/IP</td>
+                                <td class="p-3.5 text-danger">429 "Rate Limited" status</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">WebSocket AI Limiter</td>
-                                <td class="p-3">In-Memory Sliding Window Map</td>
-                                <td class="p-3">20 prompts / minute with 2m GC sweep</td>
-                                <td class="p-3 text-danger">ai_error event with retry delay</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">WebSocket AI Limiter</td>
+                                <td class="p-3.5">In-Memory Sliding Window Map</td>
+                                <td class="p-3.5">20 prompts / minute with 2m GC sweep</td>
+                                <td class="p-3.5 text-danger">ai_error event with retry delay</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Live HTML Preview Sandbox</td>
-                                <td class="p-3">CSP Sandbox Directive</td>
-                                <td class="p-3">sandbox allow-scripts allow-forms</td>
-                                <td class="p-3 text-success">Isolates into opaque origin</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Live HTML Preview Sandbox</td>
+                                <td class="p-3.5">CSP Sandbox Directive</td>
+                                <td class="p-3.5">sandbox allow-scripts allow-forms</td>
+                                <td class="p-3.5 text-ok">Isolates into opaque origin</td>
                             </tr>
-                            <tr class="hover:bg-surface/50">
-                                <td class="p-3 text-snow font-medium">Engine Origin Lockdown</td>
-                                <td class="p-3">Axum Host & Origin Middleware</td>
-                                <td class="p-3">Matches PUBLIC_URL or Bearer token</td>
-                                <td class="p-3 text-danger">403 Forbidden for alien origins</td>
+                            <tr class="hover:bg-void/40 transition-colors">
+                                <td class="p-3.5 text-snow font-medium">Engine Origin Lockdown</td>
+                                <td class="p-3.5">Axum Host & Origin Middleware</td>
+                                <td class="p-3.5">Matches PUBLIC_URL or Bearer token</td>
+                                <td class="p-3.5 text-danger">403 Forbidden for alien origins</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ─── Core REST API Cheat Sheet ──────────────────────────────────────── -->
-    <section id="api" class="py-24 px-6 max-w-6xl mx-auto w-full">
-        <div class="mb-12">
-            <span class="font-mono text-2xs text-accent uppercase tracking-widest block mb-2 font-semibold">// developer endpoints</span>
-            <h2 class="text-2xl sm:text-3xl font-semibold text-snow">REST API Quick Reference</h2>
-            <p class="text-sm text-muted mt-2 max-w-2xl">
-                Primary API endpoints powering code execution, project storage, and AI interactions.
-            </p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 font-mono text-xs">
-            
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="text-success font-semibold">POST /runCode</span>
-                    <span class="text-2xs text-dim">requireApiAuth</span>
-                </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    Submits source code for sandboxed execution and returns stdout, stderr, compile output, and execution duration.
+        <!-- Call to Action Banner -->
+        <section class="welcome-card">
+            <div>
+                <h2 class="welcome-title">Ready to write and execute code?</h2>
+                <p class="welcome-subtitle">
+                    Launch an active Monaco Editor session with instant sandbox execution or manage existing workspaces from your dashboard.
                 </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    { "code": "print(42)", "language_id": 71, "stdin": "" }
-                </div>
             </div>
-
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="text-success font-semibold">POST /ask-ai</span>
-                    <span class="text-2xs text-dim">requireApiAuth</span>
-                </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    Synchronous REST endpoint for querying the LangChain teacher agent with workspace context.
-                </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    { "prompt": "Refactor logic", "model": "llama3.2:1b" }
-                </div>
-            </div>
-
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="text-success font-semibold">POST /save-project</span>
-                    <span class="text-2xs text-dim">requireApiAuth (multipart)</span>
-                </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    Saves workspace tabs, file system structure, and optional zip backup to MongoDB Atlas.
-                </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    Fields: projectName, code, activeFileId, projectFile (.zip)
-                </div>
-            </div>
-
-            <div class="bg-card border border-edge p-5 rounded space-y-3">
-                <div class="flex items-center justify-between">
-                    <span class="text-success font-semibold">POST /preview</span>
-                    <span class="text-2xs text-dim">requireApiAuth</span>
-                </div>
-                <p class="text-2xs text-muted font-sans leading-relaxed">
-                    Assembles temporary isolated HTML/CSS/JS preview documents rendered in an opaque sandbox.
-                </p>
-                <div class="bg-void p-3 rounded border border-edge text-dim text-2xs overflow-x-auto">
-                    Returns: { "previewUrl": "/preview/:id" }
-                </div>
-            </div>
-
-        </div>
-    </section>
-
-    <!-- ─── Call to Action Banner ─────────────────────────────────────────── -->
-    <section class="py-20 px-6 border-t border-edge">
-        <div class="max-w-6xl mx-auto border border-edge bg-card p-8 md:p-12 rounded flex flex-col md:flex-row md:items-center justify-between gap-8">
-            <div class="space-y-2">
-                <h2 class="text-2xl font-semibold text-snow">Ready to build and test code?</h2>
-                <p class="text-sm text-muted">Launch the Monaco Editor workspace or explore saved projects on your dashboard.</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <a href="/editor" class="bg-accent hover:bg-accentHover text-white font-mono text-xs px-5 py-3 rounded font-medium shadow-md shadow-accent/20 transition-colors whitespace-nowrap">
-                    Launch Editor &rarr;
+            <div class="welcome-actions">
+                <a href="/editor" class="btn-action-primary">
+                    <i class="ri-play-line"></i>
+                    <span>Launch Editor</span>
                 </a>
-                <a href="/DashboardCodeEditor" class="border border-edge hover:border-edgeLight text-snow bg-surface font-mono text-xs px-5 py-3 rounded transition-colors whitespace-nowrap">
-                    Open Dashboard
+                <a href="/DashboardCodeEditor" class="btn-action-secondary">
+                    <i class="ri-dashboard-line"></i>
+                    <span>Workspaces</span>
                 </a>
             </div>
-        </div>
-    </section>
+        </section>
+
+    </main>
 
     <!-- ─── Footer ────────────────────────────────────────────────────────── -->
-    <footer class="h-16 border-t border-edge px-6 flex items-center justify-between text-2xs font-mono text-dim max-w-6xl mx-auto w-full">
-        <span>personal_code_editor // architecture & documentation</span>
-        <div class="flex items-center gap-6">
-            <a href="/DashboardCodeEditor" class="hover:text-snow transition-colors">dashboard</a>
-            <a href="/editor" class="hover:text-snow transition-colors">editor</a>
-            <a href="/login" class="hover:text-snow transition-colors">account</a>
-            <a href="https://github.com/niteshxedev-byte/codeEditor" target="_blank" rel="noopener noreferrer" class="hover:text-snow transition-colors">github</a>
+    <footer class="dashboard-footer">
+        <span>personal_code_editor // about</span>
+        <div class="footer-links">
+            <a href="/DashboardCodeEditor" class="footer-link">dashboard</a>
+            <a href="/editor" class="footer-link">editor</a>
+            <a href="/login" class="footer-link">account</a>
+            <a href="https://github.com/niteshxedev-byte/codeEditor" target="_blank" rel="noopener noreferrer" class="footer-link">github</a>
         </div>
     </footer>
 
     <!-- Interactive Inspector Script -->
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const buttons = document.querySelectorAll(".arch-btn");
-            const panes = document.querySelectorAll(".arch-pane");
+            const tabButtons = document.querySelectorAll(".interactive-tab-btn");
+            const contentPanes = document.querySelectorAll(".arch-content");
 
-            buttons.forEach(btn => {
+            tabButtons.forEach(btn => {
                 btn.addEventListener("click", () => {
                     const target = btn.getAttribute("data-target");
 
                     // Reset buttons
-                    buttons.forEach(b => {
-                        b.classList.remove("border-accent/40", "bg-accent/10", "text-snow");
-                        b.classList.add("border-transparent", "text-muted");
-                        const dot = b.querySelector("span:first-child");
-                        if (dot) dot.classList.replace("text-accent", "text-dim");
+                    tabButtons.forEach(b => {
+                        b.classList.remove("active");
+                        const icon = b.querySelector("i");
+                        if (icon) icon.className = icon.className.replace("text-blue", "text-muted");
                     });
 
-                    // Activate current button
-                    btn.classList.add("border-accent/40", "bg-accent/10", "text-snow");
-                    btn.classList.remove("border-transparent", "text-muted");
-                    const activeDot = btn.querySelector("span:first-child");
-                    if (activeDot) activeDot.classList.replace("text-dim", "text-accent");
+                    // Activate clicked button
+                    btn.classList.add("active");
+                    const activeIcon = btn.querySelector("i");
+                    if (activeIcon) activeIcon.className = activeIcon.className.replace("text-muted", "text-blue");
 
-                    // Switch pane
-                    panes.forEach(pane => pane.classList.add("hidden"));
+                    // Hide all panes
+                    contentPanes.forEach(pane => pane.classList.add("hidden"));
+
+                    // Show active pane
                     const activePane = document.getElementById("pane-" + target);
                     if (activePane) activePane.classList.remove("hidden");
                 });
@@ -807,4 +1113,5 @@
         });
     </script>
 </body>
+
 </html>

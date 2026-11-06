@@ -2,7 +2,6 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import loginCodeEditorController from '../../../Controllers/authControllers/loginCodeEditorController.js';
 import logoutCodeEditorController from '../../../Controllers/authControllers/logoutCodeEditorController.js';
-import { loginRateLimiter } from '../../../Middlewares/rateLimiter.middleware.js';
 
 const router = Router();
 
@@ -29,7 +28,7 @@ router.get('/loginCodeEditor', (req, res) => {
     return res.redirect('/login');
 });
 
-router.post('/login', loginRateLimiter, loginCodeEditorController);
+router.post('/login', loginCodeEditorController);
 
 // Logout route - clears the JWT cookie and redirects to /login
 router.get('/logout', logoutCodeEditorController);

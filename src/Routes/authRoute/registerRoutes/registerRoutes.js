@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import registerCodeEditorController from '../../../Controllers/authControllers/registerCodeEditorController.js';
-import { registerRateLimiter } from '../../../Middlewares/rateLimiter.middleware.js';
 
 const router = Router();
 
@@ -20,6 +19,6 @@ router.get('/registerCodeEditor', (req, res) => {
     res.redirect('/register');
 });
 
-router.post('/register', registerRateLimiter, registerCodeEditorController);
+router.post('/register', registerCodeEditorController);
 
 export default router;
