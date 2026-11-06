@@ -21,41 +21,16 @@ services:
       - CODEBOX_AUTH_TOKEN=${CODEBOX_AUTH_TOKEN:-dev-token}
       - PUBLIC_URL=${PUBLIC_URL:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
-      - LOCAL_OLLAMA_URL=http://ollama:11434
       - OLLAMA_URL=${OLLAMA_URL:-https://ollama.com}
       - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
     volumes:
       - uploads_data:/app/src/public/uploads
-    depends_on:
-      ollama:
-        condition: service_started
     networks:
       - editor-net
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: personal-code-editor-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - editor-net
-    # To enable GPU acceleration on NVIDIA GPUs, uncomment the block below:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
 
 volumes:
   uploads_data:
     name: editor_uploads_data
-  ollama_data:
-    name: editor_ollama_data
 
 networks:
   editor-net:

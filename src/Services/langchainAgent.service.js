@@ -95,8 +95,8 @@ export async function getAvailableModels() {
   const result = models.length > 0
     ? models
     : [
-      { id: "llama3.2:1b", name: "llama3.2:1b (Local)", source: "local" },
-      { id: "qwen3.5:0.8b", name: "qwen3.5:0.8b (Local)", source: "local" },
+      { id: "llama3.2:1b", name: "llama3.2:1b (Cloud)", source: "cloud" },
+      { id: "qwen2.5-coder:7b", name: "qwen2.5-coder:7b (Cloud)", source: "cloud" },
       { id: "gemma4:31b", name: "gemma4:31b (Cloud - Free)", source: "cloud" },
       { id: "gpt-oss:20b", name: "gpt-oss:20b (Cloud - Free)", source: "cloud" },
     ];

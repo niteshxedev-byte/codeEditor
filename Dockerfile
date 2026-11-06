@@ -21,23 +21,8 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Install tini init process, libc compatibility, and local code execution runtimes
-RUN apk add --no-cache tini libc6-compat \
-    python3 \
-    nodejs \
-    openjdk17-jre \
-    gcc \
-    g++ \
-    musl-dev \
-    go \
-    php83 \
-    ruby \
-    bash \
-    sqlite \
-    rust \
-    cargo
-# Note: Swift and Kotlin are not available in Alpine apk due to their large size.
-# If a user submits Swift or Kotlin code, the executor returns a helpful error message.
+# Install tini init process and libc compatibility (code execution runs via Codebox API)
+RUN apk add --no-cache tini libc6-compat
 
 # Configure production environment defaults
 ENV NODE_ENV=production
