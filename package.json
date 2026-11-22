@@ -14,7 +14,6 @@
     "@langchain/classic": "^1.0.48",
     "@langchain/core": "^1.1.42",
     "@langchain/langgraph": "^1.2.9",
-    "@langchain/ollama": "^1.2.7",
     "@langchain/openai": "^1.4.5",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",

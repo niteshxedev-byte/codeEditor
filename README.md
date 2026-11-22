@@ -1,6 +1,6 @@
 # Personal Code Editor
 
-A self-hosted, cloud-native web code editor and execution platform featuring **Monaco Editor**, real-time **AI pair-programming agents** (via LangChain and Ollama/Gemini/OpenAI), an isolated **cgroup v2 & Bubblewrap sandboxed execution engine**, and secure multi-project workspace management.
+A self-hosted, cloud-native web code editor and execution platform featuring **Monaco Editor**, real-time **AI pair-programming agents** (via LangChain, Groq, and OpenRouter), an isolated **cgroup v2 & Bubblewrap sandboxed execution engine**, and secure multi-project workspace management.
 
 ---
 
@@ -84,7 +84,7 @@ A self-hosted, cloud-native web code editor and execution platform featuring **M
   │      MongoDB Atlas      │  │ AI Model Providers │   │  Codebox Sandboxed Engine      │
   │  - User Accounts        │  │  - Groq (Ultra-Fast)│   │  - Bubblewrap 0.12.0 Container │
   │  - Projects & Metadata  │  │  - OpenRouter/GPT-4o│  │  - Linux cgroup v2 Controllers │
-  │  - Attached Documents   │  │  - Local Ollama     │   │  - Seccomp-BPF & prlimit Guard │
+  │  - Attached Documents   │  │  - OpenRouter API  │   │  - Seccomp-BPF & prlimit Guard │
   └─────────────────────────┘  └────────────────────┘   └────────────────────────────────┘
 ```
 
@@ -94,7 +94,7 @@ A self-hosted, cloud-native web code editor and execution platform featuring **M
 
 - **Monaco Editor Core**: Full-featured code editor with syntax highlighting, line numbers, bracket matching, tab management, and auto-indentation.
 - **Sandboxed Execution (Codebox)**: Multi-language code execution inside hardened Bubblewrap namespaces isolated via Linux cgroup v2, Seccomp-BPF filters, and `prlimit` bounds.
-- **AI Teacher Assistant**: Integrated LangChain agent supporting Groq (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`), OpenRouter (`openai/gpt-4o`, free community models), and local Ollama (`localhost:11434`). Streams token chunks, thoughts, and workspace tool calls (creating, updating, and inspecting files) over WebSockets.
+- **AI Teacher Assistant**: Integrated LangChain agent supporting Groq (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) and OpenRouter (`openai/gpt-4o`, free community models). Streams token chunks, thoughts, and workspace tool calls (creating, updating, and inspecting files) over WebSockets.
 - **Secure File Tree**: Virtual file system with recursive tree rendering, file renaming, creation, deletion, multi-tab switching, and debounced auto-save.
 - **Live HTML/JS Preview**: Isolated sandbox runtime for testing HTML, CSS, and client-side JavaScript within an opaque CSP origin.
 - **Zero-Trust Hardened**: Strict rate limiters, anti-traversal path resolution, per-user file storage boundaries, and origin-authenticated execution engine communication.
@@ -421,8 +421,8 @@ Synchronous fallback endpoint for querying the AI pair programmer.
 ```json
 {
   "models": [
-    { "id": "llama3.2:1b", "name": "Llama 3.2 (1B)", "provider": "ollama" },
-    { "id": "qwen2.5-coder:1.5b", "name": "Qwen 2.5 Coder (1.5B)", "provider": "ollama" }
+    { "id": "qwen/qwen3.8-27b", "name": "qwen/qwen3.8-27b (Groq - Fast)", "source": "groq" },
+    { "id": "openai/gpt-4o", "name": "openai/gpt-4o (OpenRouter)", "source": "openrouter" }
   ]
 }
 ```
@@ -488,7 +488,7 @@ sequenceDiagram
     autonumber
     actor User as Client Browser
     participant Server as Express & Socket.IO
-    participant AI as LangChain / Ollama
+    participant AI as LangChain (Groq / OpenRouter)
 
     User->>Server: socket.emit("ask-ai", { prompt, code, fileSystem })
     Server->>Server: checkAiSocketRateLimit(userId)
@@ -575,11 +575,10 @@ PUBLIC_URL=https://codeeditor.niteshxe.dev
 ALLOWED_ORIGINS=https://codeeditor.niteshxe.dev,http://localhost:3001
 
 # ==============================================================================
-# AI Provider Configuration (Groq, OpenRouter, and Local Ollama)
+# AI Provider Configuration (Groq & OpenRouter)
 # ==============================================================================
 GROQ_API_KEY=your_groq_api_key_here
 OPENROUTER_API_KEY=your_openrouter_api_key_here
-LOCAL_OLLAMA_URL=http://localhost:11434
 
 # ==============================================================================
 # Sandboxed Code Execution Engine (Codebox)

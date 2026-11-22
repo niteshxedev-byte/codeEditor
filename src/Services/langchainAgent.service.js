@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatOllama } from "@langchain/ollama";
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { AgentExecutor, createToolCallingAgent } from "@langchain/classic/agents";
@@ -12,7 +11,7 @@ import { SystemMessage } from "@langchain/core/messages";
 dotenv.config();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 — Multi-provider LLM resolver (Groq, OpenRouter, Local Ollama)
+// SECTION 1 — Multi-provider LLM resolver (Groq & OpenRouter)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -63,14 +62,12 @@ export async function fetchOpenRouterCompletion({
  * Supports:
  *  1. Groq (Fast inference, tool calling)
  *  2. OpenRouter (GPT-4o, free models)
- *  3. Local Ollama (Zero-latency offline coding)
  */
 export function resolveLLM(modelName = "qwen/qwen3.8-27b") {
   const groqKey = process.env.GROQ_API_KEY;
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const publicUrl = process.env.PUBLIC_URL || "https://codeeditor.niteshxe.dev";
   const siteTitle = process.env.SITE_TITLE || "Personal Code Editor";
-  const localUrl = (process.env.LOCAL_OLLAMA_URL || "http://localhost:11434").replace(/\/$/, "");
 
   let cleanModel = modelName;
   let forcedProvider = null;
@@ -81,9 +78,6 @@ export function resolveLLM(modelName = "qwen/qwen3.8-27b") {
   } else if (cleanModel.startsWith("openrouter:")) {
     forcedProvider = "openrouter";
     cleanModel = cleanModel.replace(/^openrouter:/, "");
-  } else if (cleanModel.startsWith("local:") || cleanModel.startsWith("ollama:")) {
-    forcedProvider = "ollama";
-    cleanModel = cleanModel.replace(/^(local|ollama):/, "");
   }
 
   // 1. Explicit or heuristic OpenRouter
@@ -142,9 +136,9 @@ export function resolveLLM(modelName = "qwen/qwen3.8-27b") {
   // 3. Fallback to Groq if key is present
   if (groqKey) {
     const groqFallbackModel =
-      cleanModel === "llama3.2:1b" || cleanModel === "gemma4:31b" || cleanModel === "gpt-oss:20b"
-        ? "qwen/qwen3.8-27b"
-        : cleanModel;
+      cleanModel.startsWith("qwen/") || cleanModel.startsWith("openai/")
+        ? cleanModel
+        : "qwen/qwen3.8-27b";
     return new ChatOpenAI({
       apiKey: groqKey,
       configuration: {
@@ -158,10 +152,7 @@ export function resolveLLM(modelName = "qwen/qwen3.8-27b") {
 
   // 4. Fallback to OpenRouter if key is present
   if (openRouterKey) {
-    const orFallbackModel =
-      cleanModel === "llama3.2:1b" || cleanModel === "gemma4:31b"
-        ? "liquid/lfm-3-1.7b:free"
-        : cleanModel;
+    const orFallbackModel = cleanModel.includes("/") ? cleanModel : "liquid/lfm-3-1.7b:free";
     return new ChatOpenAI({
       apiKey: openRouterKey,
       configuration: {
@@ -177,18 +168,12 @@ export function resolveLLM(modelName = "qwen/qwen3.8-27b") {
     });
   }
 
-  // 5. Fallback to Local Ollama
-  return new ChatOllama({
-    model: cleanModel,
-    baseUrl: localUrl,
-    temperature: 0.1,
-    maxRetries: 1,
-  });
+  throw new Error("No AI provider API key configured. Please set GROQ_API_KEY or OPENROUTER_API_KEY in .env.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 2 — Model discovery
-// Fetches available models from Groq, OpenRouter, and local Ollama.
+// Fetches available models from Groq and OpenRouter.
 // ─────────────────────────────────────────────────────────────────────────────
 
 let cachedModels = null;
@@ -203,7 +188,6 @@ export async function getAvailableModels() {
 
   const seen = new Set();
   const models = [];
-  const localUrl = (process.env.LOCAL_OLLAMA_URL || "http://localhost:11434").replace(/\/$/, "");
 
   // 1. Groq models
   const groqKey = process.env.GROQ_API_KEY;
@@ -285,23 +269,6 @@ export async function getAvailableModels() {
       });
     }
   }
-
-  // 3. Local Ollama (if running)
-  try {
-    const res = await fetch(`${localUrl}/api/tags`, {
-      signal: AbortSignal.timeout(1200),
-    });
-    if (res.ok) {
-      const { models: localModels = [] } = await res.json();
-      localModels.forEach((m) => {
-        const id = m.name || m.model;
-        if (id && !seen.has(id)) {
-          seen.add(id);
-          models.push({ id, name: `${id} (Local Ollama)`, source: "local" });
-        }
-      });
-    }
-  } catch (_) { }
 
   const result =
     models.length > 0
@@ -823,7 +790,7 @@ export function extractCodeBlocksAndActions(reply, language = "JavaScript", acti
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 6 — Built-in STL fallback pack (C++ programs)
-// Returned when the user asks for C++ containers but Ollama is offline.
+// Returned when the user asks for C++ containers but AI provider is offline.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getStlContainersMultiFilePack() {

@@ -12,7 +12,7 @@ dotenv.config();
  * Perfect for learning or building custom non-editor tasks.
  */
 export async function runSimpleAgent(promptText, modelName = "qwen/qwen3.8-27b") {
-  // 1. Initialize the model (Groq, OpenRouter, or Local Ollama)
+  // 1. Initialize the model (Groq or OpenRouter)
   const llm = resolveLLM(modelName);
 
   // 2. Define simple tools
