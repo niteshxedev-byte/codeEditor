@@ -1,45 +1,194 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatOllama } from "@langchain/ollama";
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
+import { AgentExecutor, createToolCallingAgent } from "@langchain/classic/agents";
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
+import { SystemMessage } from "@langchain/core/messages";
 
 dotenv.config();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 — Ollama endpoint resolver
-// Picks local (11434) if reachable, otherwise falls back to Ollama Cloud.
+// SECTION 1 — Multi-provider LLM resolver (Groq, OpenRouter, Local Ollama)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function resolveOllamaEndpoint(modelName) {
-  const cloudUrl = (process.env.OLLAMA_URL || "https://ollama.com").replace(/\/$/, "");
-  const cloudKey = process.env.OLLAMA_API_KEY || "";
+/**
+ * Direct OpenRouter chat completion fetch helper.
+ * Exactly implements standard OpenRouter REST completion call:
+ * fetch('https://openrouter.ai/api/v1/chat/completions', { ... })
+ */
+export async function fetchOpenRouterCompletion({
+  model = "openai/gpt-4o",
+  messages = [{ role: "user", content: "What is the meaning of life?" }],
+  apiKey = process.env.OPENROUTER_API_KEY,
+  siteUrl = process.env.PUBLIC_URL || "https://codeeditor.niteshxe.dev",
+  siteName = process.env.SITE_TITLE || "Personal Code Editor",
+  max_tokens = 1500,
+} = {}) {
+  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  if (!key) {
+    throw new Error("OPENROUTER_API_KEY is not configured. Please add OPENROUTER_API_KEY to your .env file.");
+  }
+
+  const payload = {
+    model,
+    messages,
+  };
+  if (max_tokens) payload.max_tokens = max_tokens;
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "HTTP-Referer": siteUrl,
+      "X-Title": siteName,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`OpenRouter API error (${response.status}): ${errorBody}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Resolves the appropriate LangChain LLM instance based on model name and environment.
+ * Supports:
+ *  1. Groq (Fast inference, tool calling)
+ *  2. OpenRouter (GPT-4o, free models)
+ *  3. Local Ollama (Zero-latency offline coding)
+ */
+export function resolveLLM(modelName = "qwen/qwen3.8-27b") {
+  const groqKey = process.env.GROQ_API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const publicUrl = process.env.PUBLIC_URL || "https://codeeditor.niteshxe.dev";
+  const siteTitle = process.env.SITE_TITLE || "Personal Code Editor";
   const localUrl = (process.env.LOCAL_OLLAMA_URL || "http://localhost:11434").replace(/\/$/, "");
 
-  try {
-    const check = await fetch(`${localUrl}/api/tags`, {
-      signal: AbortSignal.timeout(1200),
-    });
-    if (check.ok) {
-      const data = await check.json();
-      const localModels = data.models || [];
-      const hasModelLocally = !modelName || localModels.some(m => m.name === modelName || m.model === modelName);
-      if (hasModelLocally) {
-        return { baseUrl: localUrl, headers: { "Content-Type": "application/json" } };
-      }
-    }
-  } catch (_) { }
+  let cleanModel = modelName;
+  let forcedProvider = null;
 
-  return {
-    baseUrl: cloudUrl,
-    headers: {
-      "Content-Type": "application/json",
-      ...(cloudKey ? { Authorization: `Bearer ${cloudKey}` } : {}),
-    },
-  };
+  if (cleanModel.startsWith("groq:")) {
+    forcedProvider = "groq";
+    cleanModel = cleanModel.replace(/^groq:/, "");
+  } else if (cleanModel.startsWith("openrouter:")) {
+    forcedProvider = "openrouter";
+    cleanModel = cleanModel.replace(/^openrouter:/, "");
+  } else if (cleanModel.startsWith("local:") || cleanModel.startsWith("ollama:")) {
+    forcedProvider = "ollama";
+    cleanModel = cleanModel.replace(/^(local|ollama):/, "");
+  }
+
+  // 1. Explicit or heuristic OpenRouter
+  const isOpenRouterModel =
+    forcedProvider === "openrouter" ||
+    (!forcedProvider &&
+      (cleanModel.endsWith(":free") ||
+        cleanModel.includes("gpt-4o") ||
+        cleanModel.startsWith("liquid/") ||
+        cleanModel.startsWith("nvidia/") ||
+        cleanModel.startsWith("inclusionai/") ||
+        cleanModel.startsWith("baidu/")));
+
+  if (isOpenRouterModel) {
+    if (!openRouterKey) {
+      throw new Error("OPENROUTER_API_KEY is not configured on this server. Please add OPENROUTER_API_KEY to .env to use OpenRouter models.");
+    }
+    return new ChatOpenAI({
+      apiKey: openRouterKey,
+      configuration: {
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": publicUrl,
+          "X-Title": siteTitle,
+        },
+      },
+      model: cleanModel,
+      maxTokens: 2000,
+      temperature: 0.1,
+      maxRetries: 1,
+    });
+  }
+
+  // 2. Explicit or heuristic Groq
+  const isGroqModel =
+    forcedProvider === "groq" ||
+    (!forcedProvider &&
+      (cleanModel.startsWith("qwen/") ||
+        cleanModel.startsWith("openai/gpt-oss") ||
+        cleanModel.startsWith("llama-") ||
+        cleanModel.startsWith("mixtral-") ||
+        cleanModel.startsWith("gemma-")));
+
+  if (isGroqModel && groqKey) {
+    return new ChatOpenAI({
+      apiKey: groqKey,
+      configuration: {
+        baseURL: "https://api.groq.com/openai/v1",
+      },
+      model: cleanModel,
+      temperature: 0.1,
+      maxRetries: 1,
+    });
+  }
+
+  // 3. Fallback to Groq if key is present
+  if (groqKey) {
+    const groqFallbackModel =
+      cleanModel === "llama3.2:1b" || cleanModel === "gemma4:31b" || cleanModel === "gpt-oss:20b"
+        ? "qwen/qwen3.8-27b"
+        : cleanModel;
+    return new ChatOpenAI({
+      apiKey: groqKey,
+      configuration: {
+        baseURL: "https://api.groq.com/openai/v1",
+      },
+      model: groqFallbackModel,
+      temperature: 0.1,
+      maxRetries: 1,
+    });
+  }
+
+  // 4. Fallback to OpenRouter if key is present
+  if (openRouterKey) {
+    const orFallbackModel =
+      cleanModel === "llama3.2:1b" || cleanModel === "gemma4:31b"
+        ? "liquid/lfm-3-1.7b:free"
+        : cleanModel;
+    return new ChatOpenAI({
+      apiKey: openRouterKey,
+      configuration: {
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": publicUrl,
+          "X-Title": siteTitle,
+        },
+      },
+      model: orFallbackModel,
+      temperature: 0.1,
+      maxRetries: 1,
+    });
+  }
+
+  // 5. Fallback to Local Ollama
+  return new ChatOllama({
+    model: cleanModel,
+    baseUrl: localUrl,
+    temperature: 0.1,
+    maxRetries: 1,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 2 — Model discovery
-// Fetches available models from local and cloud Ollama.
+// Fetches available models from Groq, OpenRouter, and local Ollama.
 // ─────────────────────────────────────────────────────────────────────────────
 
 let cachedModels = null;
@@ -47,7 +196,8 @@ let lastModelFetch = 0;
 
 export async function getAvailableModels() {
   const now = Date.now();
-  if (cachedModels && (now - lastModelFetch < 300000)) { // Cache for 5 minutes
+  if (cachedModels && now - lastModelFetch < 300000) {
+    // Cache for 5 minutes
     return cachedModels;
   }
 
@@ -55,10 +205,91 @@ export async function getAvailableModels() {
   const models = [];
   const localUrl = (process.env.LOCAL_OLLAMA_URL || "http://localhost:11434").replace(/\/$/, "");
 
-  // Local Ollama
+  // 1. Groq models
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/models", {
+        headers: { Authorization: `Bearer ${groqKey}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const groqList = data.data || [];
+        const preferred = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+        preferred.forEach((id) => {
+          if (groqList.some((m) => m.id === id) && !seen.has(id)) {
+            seen.add(id);
+            models.push({ id, name: `${id} (Groq - Fast)`, source: "groq" });
+          }
+        });
+        groqList.slice(0, 8).forEach((m) => {
+          if (!seen.has(m.id) && m.active !== false) {
+            seen.add(m.id);
+            models.push({ id: m.id, name: `${m.id} (Groq)`, source: "groq" });
+          }
+        });
+      }
+    } catch (_) {
+      const defaultGroq = [
+        { id: "qwen/qwen3.8-27b", name: "qwen/qwen3.8-27b (Groq - Fast)", source: "groq" },
+        { id: "openai/gpt-oss-120b", name: "openai/gpt-oss-120b (Groq)", source: "groq" },
+        { id: "openai/gpt-oss-20b", name: "openai/gpt-oss-20b (Groq)", source: "groq" },
+      ];
+      defaultGroq.forEach((m) => {
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          models.push(m);
+        }
+      });
+    }
+  }
+
+  // 2. OpenRouter models
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (openRouterKey) {
+    if (!seen.has("openai/gpt-4o")) {
+      seen.add("openai/gpt-4o");
+      models.push({ id: "openai/gpt-4o", name: "openai/gpt-4o (OpenRouter)", source: "openrouter" });
+    }
+
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/models", {
+        headers: {
+          Authorization: `Bearer ${openRouterKey}`,
+          "HTTP-Referer": process.env.PUBLIC_URL || "https://codeeditor.niteshxe.dev",
+          "X-Title": process.env.SITE_TITLE || "Personal Code Editor",
+        },
+        signal: AbortSignal.timeout(3500),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const freeModels = (data.data || []).filter((m) => m.id && m.id.endsWith(":free"));
+        freeModels.slice(0, 8).forEach((m) => {
+          if (!seen.has(m.id)) {
+            seen.add(m.id);
+            models.push({ id: m.id, name: `${m.name || m.id} (OpenRouter - Free)`, source: "openrouter" });
+          }
+        });
+      }
+    } catch (_) {
+      const defaultOr = [
+        { id: "liquid/lfm-3-1.7b:free", name: "LiquidAI: LFM3-1.7B (OpenRouter - Free)", source: "openrouter" },
+        { id: "nvidia/nemotron-3.5-super-vl:free", name: "NVIDIA: Nemotron 3.5 Super (OpenRouter - Free)", source: "openrouter" },
+      ];
+      defaultOr.forEach((m) => {
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          models.push(m);
+        }
+      });
+    }
+  }
+
+  // 3. Local Ollama (if running)
   try {
     const res = await fetch(`${localUrl}/api/tags`, {
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(1200),
     });
     if (res.ok) {
       const { models: localModels = [] } = await res.json();
@@ -66,40 +297,22 @@ export async function getAvailableModels() {
         const id = m.name || m.model;
         if (id && !seen.has(id)) {
           seen.add(id);
-          models.push({ id, name: `${id} (Local)`, source: "local" });
+          models.push({ id, name: `${id} (Local Ollama)`, source: "local" });
         }
       });
     }
   } catch (_) { }
 
-  // Cloud Ollama
-  const cloudUrl = (process.env.OLLAMA_URL || "https://ollama.com").replace(/\/$/, "");
-  const cloudKey = process.env.OLLAMA_API_KEY;
-  try {
-    const res = await fetch(`${cloudUrl}/api/tags`, {
-      headers: cloudKey ? { Authorization: `Bearer ${cloudKey}` } : {},
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const { models: cloudModels = [] } = await res.json();
-      cloudModels.forEach((m) => {
-        const id = m.name || m.model;
-        if (id && !seen.has(id)) {
-          seen.add(id);
-          models.push({ id, name: `${id} (Cloud)`, source: "cloud" });
-        }
-      });
-    }
-  } catch (_) { }
-
-  const result = models.length > 0
-    ? models
-    : [
-      { id: "llama3.2:1b", name: "llama3.2:1b (Cloud)", source: "cloud" },
-      { id: "qwen2.5-coder:7b", name: "qwen2.5-coder:7b (Cloud)", source: "cloud" },
-      { id: "gemma4:31b", name: "gemma4:31b (Cloud - Free)", source: "cloud" },
-      { id: "gpt-oss:20b", name: "gpt-oss:20b (Cloud - Free)", source: "cloud" },
-    ];
+  const result =
+    models.length > 0
+      ? models
+      : [
+          { id: "qwen/qwen3.8-27b", name: "qwen/qwen3.8-27b (Groq - Fast)", source: "groq" },
+          { id: "openai/gpt-oss-120b", name: "openai/gpt-oss-120b (Groq)", source: "groq" },
+          { id: "openai/gpt-4o", name: "openai/gpt-4o (OpenRouter)", source: "openrouter" },
+          { id: "liquid/lfm-3-1.7b:free", name: "LiquidAI: LFM3-1.7B (OpenRouter - Free)", source: "openrouter" },
+          { id: "nvidia/nemotron-3.5-super-vl:free", name: "NVIDIA: Nemotron 3.5 Super (OpenRouter - Free)", source: "openrouter" },
+        ];
 
   cachedModels = result;
   lastModelFetch = Date.now();
@@ -113,24 +326,9 @@ export async function getAvailableModels() {
 // The agent can call any of these during its reasoning loop.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * All tools the Teacher Agent can invoke.
- * Each tool has:
- *   - name         : snake_case identifier sent to Ollama
- *   - description  : what the tool does (shown to the model)
- *   - parameters   : JSON Schema object describing the input
- *   - execute(args): async function that performs the action server-side
- */
-import { ChatOllama } from "@langchain/ollama";
-import { DynamicStructuredTool } from "@langchain/core/tools";
-import { z } from "zod";
-import { AgentExecutor, createToolCallingAgent } from "@langchain/classic/agents";
-import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
-import { SystemMessage } from "@langchain/core/messages";
-
 export async function runTeacherAgent({
   prompt,
-  modelName = "llama3.2:1b",
+  modelName = "qwen/qwen3.8-27b",
   fileSystem = [],
   activeFileId = null,
   activeCode = "",
@@ -212,20 +410,7 @@ Current file: "${activeFileName}" | Language: ${effectiveLanguage}
 ${activeCode || "// (empty buffer)"}
 \`\`\`${extraContext}`;
 
-  const { baseUrl, headers } = await resolveOllamaEndpoint(modelName);
-
-  // If attempting to use cloud Ollama without an API key, fail fast with a clear message
-  if (baseUrl.includes("ollama.com") && (!headers || !headers.Authorization)) {
-    throw new Error("OLLAMA_API_KEY is not configured on this server. Please add your OLLAMA_API_KEY to .env to use cloud models.");
-  }
-
-  const llm = new ChatOllama({
-    model: modelName,
-    baseUrl: baseUrl,
-    headers: headers,
-    temperature: 0.1,
-    maxRetries: 1, // Fail fast instead of retrying 6 times with exponential backoff (which freezes for 75s+)
-  });
+  const llm = resolveLLM(modelName);
 
   const actions = []; // Collect actions for frontend
 
@@ -665,4 +850,6 @@ export default {
   getAvailableModels,
   extractCodeBlocksAndActions,
   runTeacherAgent,
+  resolveLLM,
+  fetchOpenRouterCompletion,
 };

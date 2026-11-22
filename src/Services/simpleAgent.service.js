@@ -1,4 +1,4 @@
-import { ChatOllama } from "@langchain/ollama";
+import { resolveLLM } from "./langchainAgent.service.js";
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { AgentExecutor, createToolCallingAgent } from "@langchain/classic/agents";
@@ -11,18 +11,9 @@ dotenv.config();
  * A dead-simple AI agent with basic tools.
  * Perfect for learning or building custom non-editor tasks.
  */
-export async function runSimpleAgent(promptText) {
-  // 1. Initialize the model 
-  // (Uses your environment variables or defaults to a free cloud model)
-  const cloudUrl = (process.env.OLLAMA_URL || "https://ollama.com").replace(/\/$/, "");
-  const cloudKey = process.env.OLLAMA_API_KEY || "";
-  
-  const llm = new ChatOllama({
-    model: "gemma4:31b",
-    baseUrl: cloudUrl,
-    headers: cloudKey ? { Authorization: `Bearer ${cloudKey}` } : {},
-    temperature: 0.1,
-  });
+export async function runSimpleAgent(promptText, modelName = "qwen/qwen3.8-27b") {
+  // 1. Initialize the model (Groq, OpenRouter, or Local Ollama)
+  const llm = resolveLLM(modelName);
 
   // 2. Define simple tools
   const tools = [

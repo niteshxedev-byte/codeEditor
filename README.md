@@ -74,17 +74,17 @@ A self-hosted, cloud-native web code editor and execution platform featuring **M
 │  ┌───────────────────────┐  ┌─────────────────────────┐  ┌───────────────────────────┐  │
 │  │   Workspace Manager   │  │   LangChain AI Agent    │  │    Execution Dispatcher   │  │
 │  │   - Per-User Storage  │  │   - Tool Calling Engine │  │    - Codebox REST Client   │  │
-│  │   - Project Export/ZIP│  │   - Ollama Cloud/Local  │  │    - Job Polling & Timeouts│  │
+│  │   - Project Export/ZIP│  │   - Groq / OpenRouter   │  │    - Job Polling & Timeouts│  │
 │  │   - File Upload Guard │  │   - Streaming Emitter   │  │    - Auth Header Injection │  │
 │  └───────────────────────┘  └─────────────────────────┘  └───────────────────────────┘  │
 └────────────────┬────────────────────────┬───────────────────────────────┬──────────────┘
                  │                        │                               │
                  ▼                        ▼                               ▼
   ┌─────────────────────────┐  ┌────────────────────┐   ┌────────────────────────────────┐
-  │      MongoDB Atlas      │  │ Ollama AI Endpoint │   │  Codebox Sandboxed Engine      │
-  │  - User Accounts        │  │  - Local (11434)   │   │  - Bubblewrap 0.12.0 Container │
-  │  - Projects & Metadata  │  │  - Ollama Cloud    │   │  - Linux cgroup v2 Controllers │
-  │  - Attached Documents   │  │  - Tool Automation │   │  - Seccomp-BPF & prlimit Guard │
+  │      MongoDB Atlas      │  │ AI Model Providers │   │  Codebox Sandboxed Engine      │
+  │  - User Accounts        │  │  - Groq (Ultra-Fast)│   │  - Bubblewrap 0.12.0 Container │
+  │  - Projects & Metadata  │  │  - OpenRouter/GPT-4o│  │  - Linux cgroup v2 Controllers │
+  │  - Attached Documents   │  │  - Local Ollama     │   │  - Seccomp-BPF & prlimit Guard │
   └─────────────────────────┘  └────────────────────┘   └────────────────────────────────┘
 ```
 
@@ -94,7 +94,7 @@ A self-hosted, cloud-native web code editor and execution platform featuring **M
 
 - **Monaco Editor Core**: Full-featured code editor with syntax highlighting, line numbers, bracket matching, tab management, and auto-indentation.
 - **Sandboxed Execution (Codebox)**: Multi-language code execution inside hardened Bubblewrap namespaces isolated via Linux cgroup v2, Seccomp-BPF filters, and `prlimit` bounds.
-- **AI Teacher Assistant**: Integrated LangChain agent supporting local Ollama (`localhost:11434`) and Cloud Ollama models. Streams token chunks, thoughts, and workspace tool calls (creating, updating, and inspecting files) over WebSockets.
+- **AI Teacher Assistant**: Integrated LangChain agent supporting Groq (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`), OpenRouter (`openai/gpt-4o`, free community models), and local Ollama (`localhost:11434`). Streams token chunks, thoughts, and workspace tool calls (creating, updating, and inspecting files) over WebSockets.
 - **Secure File Tree**: Virtual file system with recursive tree rendering, file renaming, creation, deletion, multi-tab switching, and debounced auto-save.
 - **Live HTML/JS Preview**: Isolated sandbox runtime for testing HTML, CSS, and client-side JavaScript within an opaque CSP origin.
 - **Zero-Trust Hardened**: Strict rate limiters, anti-traversal path resolution, per-user file storage boundaries, and origin-authenticated execution engine communication.
@@ -575,11 +575,11 @@ PUBLIC_URL=https://codeeditor.niteshxe.dev
 ALLOWED_ORIGINS=https://codeeditor.niteshxe.dev,http://localhost:3001
 
 # ==============================================================================
-# Ollama AI Configuration
+# AI Provider Configuration (Groq, OpenRouter, and Local Ollama)
 # ==============================================================================
+GROQ_API_KEY=your_groq_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 LOCAL_OLLAMA_URL=http://localhost:11434
-OLLAMA_URL=https://ollama.com
-OLLAMA_API_KEY=your_ollama_cloud_api_key_here
 
 # ==============================================================================
 # Sandboxed Code Execution Engine (Codebox)

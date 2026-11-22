@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
 
             const result = await runTeacherAgent({
                 prompt,
-                modelName: model || "llama3.2:1b",
+                modelName: model || "qwen/qwen3.8-27b",
                 fileSystem: Array.isArray(fileSystem) ? fileSystem : [],
                 activeFileId,
                 activeCode: code || "",

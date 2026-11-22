@@ -456,7 +456,7 @@
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
 
     try {
-      const selectedModel = document.getElementById("ai-model-select") ? document.getElementById("ai-model-select").value : "llama3.2:1b";
+      const selectedModel = document.getElementById("ai-model-select") ? document.getElementById("ai-model-select").value : "qwen/qwen3.8-27b";
       const code = window.editor ? window.editor.getValue() : "";
       const currentFs = typeof fileSystem !== 'undefined' ? fileSystem : [];
       const currentActiveId = typeof activeFileId !== 'undefined' ? activeFileId : null;

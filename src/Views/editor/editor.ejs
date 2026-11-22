@@ -281,7 +281,7 @@
         <div style="display:flex; align-items:center; gap:6px;">
           <select id="ai-model-select" class="select-box"
             style="height:24px; font-size:11px; padding:0 6px; width:auto; max-width:160px; background:#000; border-color:#27272a; color:#fff;"
-            title="Select Local or Cloud Ollama Model">
+            title="Select AI Model (Groq, OpenRouter, or Local)">
             <% if (typeof aiModels !=="undefined" && aiModels.length> 0) { %>
               <% aiModels.forEach((m, idx)=> { %>
                 <option value="<%= m.id %>" <%=idx===0 ? "selected" : "" %>>
@@ -289,15 +289,16 @@
                 </option>
                 <% }) %>
                   <% } else { %>
-                    <option value="llama3.2:1b" selected>llama3.2:1b (Cloud)</option>
-                    <option value="qwen2.5-coder:7b">qwen2.5-coder:7b (Cloud)</option>
-                    <option value="gemma4:31b">gemma4:31b (Cloud - Free)</option>
-                    <option value="gpt-oss:20b">gpt-oss:20b (Cloud - Free)</option>
+                    <option value="qwen/qwen3.8-27b" selected>Qwen 3.8 27B (Groq - Fast)</option>
+                    <option value="openai/gpt-oss-120b">GPT-OSS 120B (Groq)</option>
+                    <option value="openai/gpt-4o">GPT-4o (OpenRouter)</option>
+                    <option value="liquid/lfm-3-1.7b:free">LFM 3 1.7B (OpenRouter - Free)</option>
+                    <option value="nvidia/nemotron-3.5-super-vl:free">Nemotron 3.5 Super (OpenRouter - Free)</option>
                     <% } %>
           </select>
           <button type="button" onclick="refreshModels()"
             style="background:none; border:none; color:#6b7280; cursor:pointer; padding:2px; font-size:12px;"
-            title="Refresh local & cloud models">
+            title="Refresh Groq, OpenRouter & local models">
             <i class="ri-refresh-line"></i>
           </button>
           <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color:#22c55e;">
