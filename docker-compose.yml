@@ -8,22 +8,7 @@ services:
     ports:
       - "${PORT:-3001}:3001"
     env_file:
-      - path: .env
-        required: false
-    environment:
-      - PORT=3001
-      - NODE_ENV=production
-      - MONGO_URI=${MONGO_URI}
-      - JWT_SECRET=${JWT_SECRET}
-      - SESSION_SECRET=${SESSION_SECRET}
-      - COOKIE_SECURE=${COOKIE_SECURE:-false}
-      - CODEBOX_URL=${CODEBOX_URL:-http://localhost:3000}
-      - CODEBOX_AUTH_TOKEN=${CODEBOX_AUTH_TOKEN:-dev-token}
-      - PUBLIC_URL=${PUBLIC_URL:-}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - LOCAL_OLLAMA_URL=${LOCAL_OLLAMA_URL:-http://localhost:11434}
+      - .env
     volumes:
       - uploads_data:/app/src/public/uploads
     networks:
